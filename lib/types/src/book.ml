@@ -2,7 +2,7 @@ open! Core
 
 type t =
   { symbol : Symbol.t
-  ; bids : Level.t list
+  ; bids : Leve.t list
   ; asks : Level.t list
   ; bbo : Bbo.t
   }
