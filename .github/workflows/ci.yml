@@ -54,7 +54,12 @@ jobs:
   # Informational only: runs the order book benchmark and publishes the table
   # to the run's Summary page. Runs in parallel with build-and-test and is
   # marked continue-on-error so noisy/failed benchmarks never block CI.
+  #
+  # PRs only: on pushes to main the benchmark-tracking workflow (benchmark.yml)
+  # runs the bench and records history, so we skip here to avoid running it
+  # twice.
   benchmark:
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/jane-street-immersion-program/jsip-exchange-ci:latest
