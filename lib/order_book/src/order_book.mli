@@ -59,6 +59,7 @@ val best_bid_offer : t -> Bbo.t
     displaying. Orders are sorted by price (best first). *)
 val snapshot : t -> Book.t
 
+
 (** {2 Testing}
 
     In tests we want to check that the correct order was removed, so we

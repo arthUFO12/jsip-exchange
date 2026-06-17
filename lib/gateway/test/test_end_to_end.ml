@@ -72,10 +72,12 @@ let%expect_test "e2e: three clients, sequential orders, shared book" =
     [%expect
       {|
       [for Alice] ACCEPTED id=3 AAPL BUY 80@$150.10 DAY
-      [for Alice] FILL fill_id=1 AAPL $150.10 x50 aggressor=3(Alice) BUY resting=2(Charlie)
-      [for Charlie] FILL fill_id=1 AAPL $150.10 x50 aggressor=3(Alice) BUY resting=2(Charlie)
-      [for Alice] FILL fill_id=2 AAPL $150.00 x30 aggressor=3(Alice) BUY resting=1(Bob)
-      [for Bob] FILL fill_id=2 AAPL $150.00 x30 aggressor=3(Alice) BUY resting=1(Bob)
+      [for Alice] FILL fill_id=1 AAPL $150.00 x50 aggressor=3(Alice) BUY resting=1(Bob)
+      [for Bob] FILL fill_id=1 AAPL $150.00 x50 aggressor=3(Alice) BUY resting=1(Bob)
+      [for Alice] FILL fill_id=2 AAPL $150.10 x30 aggressor=3(Alice) BUY resting=2(Charlie)
+      [for Charlie] FILL fill_id=2 AAPL $150.10 x30 aggressor=3(Alice) BUY resting=2(Charlie)
+      
+      
       |}];
     (* Verify book state *)
     let%bind book = rpc_book alice Harness.aapl in
@@ -85,8 +87,8 @@ let%expect_test "e2e: three clients, sequential orders, shared book" =
       === AAPL ===
         BIDS: (empty)
         ASKS:
-          $150.00 x20
-        BBO: - / $150.00 x20
+          $150.10 x20
+        BBO: - / $150.10 x20
       |}];
     return ())
 ;;

@@ -1,12 +1,13 @@
 open! Core
 
+(* make a mini module that has all the things that Comparable.Make needs*)
 module T = struct
   type t = int [@@deriving sexp, bin_io, compare, equal, hash]
 end
 
 include T
 include Comparable.Make (T)
-
+(* functor : function from module to module *)
 let cents_per_dollar = 100
 let of_int_cents n = n
 let to_int_cents t = t
@@ -29,17 +30,13 @@ let ( - ) = Int.( - )
 let ( * ) price qty = price * qty
 
 let is_more_aggressive side ~price ~than =
-  ignore side;
-  ignore price;
-  ignore than;
-  failwith "TODO: implement Price.is_more_aggressive"
+  match (side : Side.t) with Buy -> price > than | Sell -> price < than
 ;;
 
 let is_marketable side ~price ~resting_price =
-  ignore side;
-  ignore price;
-  ignore resting_price;
-  failwith "TODO: implement Price.is_marketable"
+  match (side : Side.t) with
+  | Buy -> price >= resting_price
+  | Sell -> price <= resting_price
 ;;
 
 let to_string_dollar t =

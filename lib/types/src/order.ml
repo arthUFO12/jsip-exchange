@@ -76,6 +76,24 @@ let size t = t.size
 let remaining_size t = t.remaining_size
 let time_in_force t = t.time_in_force
 
+let better_price_time side ~ord1 ~ord2 = 
+  let ord1_price = price ord1 in
+  let ord2_price = price ord2 in
+  let ord1_id = order_id ord1 in
+  let ord2_id = order_id ord2 in
+    if (Price.equal ord1_price ord2_price) then Order_id.(<) ord1_id ord2_id
+    else Price.is_more_aggressive side ~price:ord1_price ~than:ord2_price
+
+
+let price_time_cmp side ord1 ord2 =
+  let ord1_price = price ord1 in
+  let ord2_price = price ord2 in
+  let ord1_id = order_id ord1 in
+  let ord2_id = order_id ord2 in
+    if (Price.equal ord1_price ord2_price) then Order_id.compare ord1_id ord2_id
+    else (if Price.is_more_aggressive side ~price:ord1_price ~than:ord2_price then 1 else -1)
+
+
 let fill t ~by =
   if Size.( <= ) by Size.zero
   then

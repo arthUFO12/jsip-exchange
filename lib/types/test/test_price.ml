@@ -1,6 +1,76 @@
 open! Core
 open Jsip_types
 
+let%expect_test "is_more_aggressive: correctly deduces if ~price is more \
+                 aggressive than ~than"
+  =
+  [%test_result: bool]
+    (Price.is_more_aggressive
+       Buy
+       ~price:(Price.of_float_exn 40.)
+       ~than:(Price.of_float_exn 50.))
+    ~expect:false;
+  [%test_result: bool]
+    (Price.is_more_aggressive
+       Sell
+       ~price:(Price.of_float_exn 40.)
+       ~than:(Price.of_float_exn 50.))
+    ~expect:true;
+  [%test_result: bool]
+    (Price.is_more_aggressive
+       Buy
+       ~price:(Price.of_float_exn 60.)
+       ~than:(Price.of_float_exn 50.))
+    ~expect:true;
+  [%test_result: bool]
+    (Price.is_more_aggressive
+       Sell
+       ~price:(Price.of_float_exn 70.)
+       ~than:(Price.of_float_exn 50.))
+    ~expect:false;
+  [%test_result: bool] (* Equal price case *)
+    (Price.is_more_aggressive
+       Buy
+       ~price:(Price.of_float_exn 70.)
+       ~than:(Price.of_float_exn 70.))
+    ~expect:false
+;;
+
+let%expect_test "is_marketable: correctly deduces if ~price is marketable \
+                 to ~resting_price"
+  =
+  [%test_result: bool]
+    (Price.is_marketable
+       Buy
+       ~price:(Price.of_float_exn 40.)
+       ~resting_price:(Price.of_float_exn 50.))
+    ~expect:false;
+  [%test_result: bool]
+    (Price.is_marketable
+       Sell
+       ~price:(Price.of_float_exn 40.)
+       ~resting_price:(Price.of_float_exn 50.))
+    ~expect:true;
+  [%test_result: bool]
+    (Price.is_marketable
+       Buy
+       ~price:(Price.of_float_exn 60.)
+       ~resting_price:(Price.of_float_exn 50.))
+    ~expect:true;
+  [%test_result: bool]
+    (Price.is_marketable
+       Sell
+       ~price:(Price.of_float_exn 70.)
+       ~resting_price:(Price.of_float_exn 50.))
+    ~expect:false;
+  [%test_result: bool] (* Equal price case *)
+    (Price.is_marketable
+       Buy
+       ~price:(Price.of_float_exn 70.)
+       ~resting_price:(Price.of_float_exn 70.))
+    ~expect:true
+;;
+
 let%expect_test "of_int_cents and to_int_cents round-trip" =
   [%test_result: int]
     (Price.to_int_cents (Price.of_int_cents 15025))
