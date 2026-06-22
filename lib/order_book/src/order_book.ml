@@ -11,9 +11,9 @@ module BookSide = struct
     ; mutable price_levels : Order.t Queue.t Price.Map.t
     ; id_to_price : (Order_id.t, Price.t) Hashtbl_intf.Hashtbl.t
     }
-
+[@@deriving sexp_of]
     
-  let _add t order =
+  let add t order =
     let order_price = Order.price order in
     let order_id = Order.order_id order in
     let order_queue =
@@ -34,21 +34,24 @@ module BookSide = struct
     | false -> ()
   ;;
 
-  let _remove t order_id =
-    let order_price = Hashtbl.find_exn t.id_to_price order_id in
+  let remove t order_id =
+    match Hashtbl.find t.id_to_price order_id with 
+      | None -> false
+      | Some order_price ->
     let price_queue = Map.find_exn t.price_levels order_price in
     let front_id = Queue.peek_exn price_queue |> Order.order_id in
-    if Order_id.equal order_id front_id
+    (if Order_id.equal order_id front_id
     then
       Queue.dequeue_and_ignore_exn price_queue
     else
       Queue.filter_inplace price_queue ~f:(fun ele ->
         let ele_id = Order.order_id ele in
         not (Order_id.equal order_id ele_id));
-    _clean_up_price_level t order_price
+    _clean_up_price_level t order_price);
+    true
   ;;
 
-  let _create side =
+  let create side =
     let map = Price.Map.empty in
     let id_to_price =
       Hashtbl.create ~growth_allowed:true (module Order_id)
@@ -56,75 +59,58 @@ module BookSide = struct
     { side; price_levels = map;  id_to_price }
   ;;
 
-  let _best_price t = match Map.max_elt t.price_levels with 
+  let best_price t = 
+    let best_price = (match (t.side: Side.t) with 
+    | Buy -> Map.max_elt t.price_levels 
+    | Sell -> Map.min_elt t.price_levels)
+  in
+  match best_price with
     | None -> None
     | Some (price, _) -> Some price
 
-  let _list_out t =
+  let list_out t =
     let list = ref [] in
     Map.iter t.price_levels ~f:(fun q ->
-      list := !list @ Queue.to_list q)
+      list := match (t.side: Side.t) with 
+      | Buy -> !list @ (Queue.to_list q)
+      | Sell -> (Queue.to_list q) @ !list);
+    !list
 
 
-  let _find t order_id =
+  let find t order_id =
     match Hashtbl.find t.id_to_price order_id with 
       | None -> None
       | Some price -> 
         Map.find_exn t.price_levels price |> Queue.find ~f:(fun ord -> Order_id.equal (Order.order_id ord) order_id)
 
+  let is_empty t = Map.is_empty t.price_levels
+
+  let size t = Map.fold t.price_levels ~init:0 ~f:(fun ~key:_ ~data sum -> sum + (Queue.length data))
 end
 
 type t =
   { symbol : Symbol.t
-  ; mutable bids : Order.t list
-  ; mutable asks : Order.t list
+  ; bids : BookSide.t
+  ; asks : BookSide.t
   }
 [@@deriving sexp_of]
 
-let create symbol = { symbol; bids = []; asks = [] }
+let create symbol = { symbol; bids = BookSide.create Side.Buy; asks = BookSide.create Side.Sell }
 let symbol t = t.symbol
 
 let side_list t side =
-  match (side : Side.t) with Buy -> t.bids | Sell -> t.asks
-;;
-
-let set_side_list t side orders =
-  match (side : Side.t) with
-  | Buy -> t.bids <- orders
-  | Sell -> t.asks <- orders
+  match (side : Side.t) with Buy -> (BookSide.list_out t.bids) | Sell -> (BookSide.list_out t.asks)
 ;;
 
 let add t order =
-  let side = Order.side order in
-  set_side_list t side (order :: side_list t side)
+  match (Order.side order: Side.t) with 
+  | Buy -> BookSide.add t.bids order
+  | Sell -> BookSide.add t.asks order
 ;;
 
-let remove' t order_id =
-  let remove_from t side order_id =
-    let orders = side_list t side in
-    match
-      List.partition_tf orders ~f:(fun o ->
-        Order_id.equal (Order.order_id o) order_id)
-    with
-    | [], _ -> None
-    | [ found ], rest ->
-      set_side_list t side rest;
-      Some found
-    | matches, _ ->
-      [%log.info
-        "BUG: More than one order matching order_id found when removing"
-          (order_id : Order_id.t)
-          (matches : Order.t list)
-          (t.symbol : Symbol.t)
-          (side : Side.t)];
-      None
-  in
-  match remove_from t Buy order_id with
-  | Some _ as result -> result
-  | None -> remove_from t Sell order_id
-;;
 
-let remove t order_id = ignore (remove' t order_id : Order.t option)
+
+let remove t order_id = if not (BookSide.remove t.bids order_id) then ignore (BookSide.remove t.asks order_id)
 
 let find t order_id =
   let find_in side =
@@ -157,8 +143,11 @@ let find_match t incoming =
 ;;
 
 let orders_on_side t side = side_list t side
-let is_empty t = List.is_empty t.bids && List.is_empty t.asks
-let count t side = List.length (side_list t side)
+let is_empty t = BookSide.is_empty t.bids && BookSide.is_empty t.asks
+let count t side = match (side: Side.t) with 
+  | Buy -> BookSide.size t.bids
+  | Sell -> BookSide.size t.asks
+
 
 let best_price t side =
   side_list t side
@@ -187,9 +176,9 @@ let best_bid_offer t : Bbo.t =
 ;;
 
 let snapshot_side t (side : Side.t) =
-  orders_on_side t side
-  |> List.sort ~compare:(Comparable.reverse (Order.price_time_cmp side))
-  |> List.map ~f:Level.of_order
+  (match side with 
+  | Buy -> BookSide.list_out t.bids
+  | Sell -> BookSide.list_out t.asks) |> List.map ~f:Level.of_order
 ;;
 
 let snapshot t =
