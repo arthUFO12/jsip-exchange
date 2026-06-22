@@ -87,10 +87,7 @@ let is_empty t = List.is_empty t.bids && List.is_empty t.asks
 let count t side = List.length (side_list t side)
 
 let best_price t side =
-  match side_list t side with
-  | [] -> None
-  | orders  ->
-    List.reduce (List.map orders ~f:Order.price) ~f:(fun price1 price2 ->
+    side_list t side |> List.map ~f:Order.price |> List.reduce ~f:(fun price1 price2 ->
       if Price.is_more_aggressive side ~price:price1 ~than:price2
       then price1
       else price2
