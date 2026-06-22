@@ -6,4 +6,6 @@ type t =
   | Book of Symbol.t
   | Subscribe of Symbol.t
 
+val to_string : t -> string
+
 val parse : ?default_participant:Participant.t -> string -> t Or_error.t
