@@ -38,6 +38,7 @@ end
 
 let make_recording_bot ~participant =
   let oracle = Fundamental_oracle.create oracle_config ~seed:1 in
+  let login _name = return (Ok (Participant.of_string "anonymous")) in
   let submit _req = return (Ok ()) in
   let cancel _id = return (Ok ()) in
   let observed = ref [] in
@@ -48,6 +49,7 @@ let make_recording_bot ~participant =
       ~participant
       ~oracle
       ~rng:(Splittable_random.of_int 0)
+      ~login
       ~submit
       ~cancel
       ~tick_interval:(Time_ns.Span.of_sec 1.0)

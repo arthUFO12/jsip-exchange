@@ -30,6 +30,15 @@ let market_data_rpc =
     ()
 ;;
 
+let login_rpc = 
+  Rpc.Rpc.create
+    ~name:"login"
+    ~version:1
+    ~bin_query: String.bin_t
+    ~include_in_error_count: Only_on_exn
+    ~bin_response: [%bin_type_class: Participant.t Or_error.t]
+    
+
 let audit_log_rpc =
   Rpc.Pipe_rpc.create
     ~name:"audit-log"

@@ -30,7 +30,7 @@ val push : t -> Exchange_event.t -> unit
 
 (** Close the outbound pipe. Subsequent reads on [reader t] will drain any
     remaining buffered events and then EOF. *)
-val close : t -> unit
+val close : t -> unit Deferred.t
 
 (** [true] iff [close] has been called. *)
 val is_closed : t -> bool

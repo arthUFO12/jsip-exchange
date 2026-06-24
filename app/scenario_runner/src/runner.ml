@@ -18,6 +18,9 @@ let start_bot ~where_to_connect ~oracle (Bot_spec.T spec) =
     >>| Result.map_error ~f:Error.of_exn
     >>| ok_exn
   in
+  let login name =
+    Rpc.Rpc.dispatch_exn Rpc_protocol.login_rpc connection name 
+  in
   let submit request =
     Rpc.Rpc.dispatch_exn Rpc_protocol.submit_order_rpc connection request
   in
@@ -35,6 +38,7 @@ let start_bot ~where_to_connect ~oracle (Bot_spec.T spec) =
       ~participant:spec.participant
       ~oracle
       ~rng:(Splittable_random.of_int spec.rng_seed)
+      ~login
       ~submit
       ~cancel
       ~tick_interval:spec.tick_interval

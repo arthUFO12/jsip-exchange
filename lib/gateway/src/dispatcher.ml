@@ -6,13 +6,30 @@ type t =
   { market_data_subscribers_by_symbol :
       Exchange_event.t Pipe.Writer.t Bag.t Symbol.Table.t
   ; audit_subscribers : Exchange_event.t Pipe.Writer.t Bag.t
+  ; sessions : Session.t Participant.Table.t
   }
 
 let create () =
   { market_data_subscribers_by_symbol = Symbol.Table.create ()
   ; audit_subscribers = Bag.create ()
+  ; sessions = Participant.Table.create ()
   }
 ;;
+
+let clean_up_session t session =
+  Hashtbl.remove t.sessions (Session.participant session);
+  Session.close session
+
+let set_up_session t participant =
+  let new_session = Session.create participant in
+  let%bind () = match Hashtbl.find t.sessions participant with 
+    | None -> return ()
+    | Some old_session -> clean_up_session t old_session in
+  ignore (Hashtbl.add t.sessions ~key:participant ~data:new_session);
+  return ()
+
+let get_session_exn t participant =
+  Hashtbl.find_exn t.sessions participant
 
 let subscribe_market_data t symbols =
   let reader, writer = Pipe.create () in

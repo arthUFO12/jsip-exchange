@@ -34,9 +34,9 @@ module TickerData = struct
 
   let amount t = t.amount
 
-  let total_price t = t.total_price
+  let _total_price t = t.total_price
 
-  let trading_price t = t.trading_price
+  let _trading_price t = t.trading_price
 end
 
 
@@ -48,14 +48,14 @@ module ParticipantPnl = struct
   ; mutable realized_pnl: Price.t
   }
 
-  let create participant =
+  let _create participant =
     { participant
     ; ticker_data = Hashtbl.create (module Symbol)
     ; unrealized_pnl = Price.of_int_cents 0
     ; realized_pnl = Price.of_int_cents 0
     }
   
-  let calculate_unrealized_pnl t =
+  let _calculate_unrealized_pnl t =
     let fold_func ~key:_ ~data:t_data sum =
       match TickerData.amount t_data with 
         | amt when Size.to_int amt >= 0 -> (Price.to_float t_data.trading_price) -. (TickerData.average_entry_price t_data) +. sum
@@ -76,7 +76,7 @@ module ParticipantPnl = struct
     let transaction_pnl = match (side: Side.t) with Buy -> (tot_exit_price -. tot_entry_price) | Sell -> (tot_entry_price -. tot_exit_price) in
     t.realized_pnl <- (Price.to_float t.realized_pnl) +. transaction_pnl |> Price.of_float_exn
 
-  let trade_ticker t ~side ~symbol ~price ~size =
+  let _trade_ticker t ~side ~symbol ~price ~size =
     let t_data = Hashtbl.find_or_add t.ticker_data symbol ~default:TickerData.create in
     exit_position t t_data ~side ~price ~size;
     match (side: Side.t) with 

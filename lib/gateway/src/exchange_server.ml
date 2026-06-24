@@ -3,6 +3,16 @@ open! Async
 open Jsip_types
 open Jsip_order_book
 
+module type Connection_state_sig = sig
+  type t = { mutable session : Session.t option }
+
+end
+
+module Connection_state : Connection_state_sig = struct
+  type t = { mutable session : Session.t option }
+
+end
+
 type t =
   { engine : Matching_engine.t
   ; dispatcher : Dispatcher.t
@@ -18,8 +28,12 @@ type t =
    without the server's memory growing unboundedly. *)
 let request_queue_size_budget = 1024
 
-let handle_submit ~request_writer (request : Order.Request.t) =
-  let%map () = Pipe.write_if_open request_writer request in
+let handle_submit ~request_writer (request : Order.Request.t) (state: Connection_state.t) =
+  match state.session with 
+    | None -> return (Or_error.error_string "not logged in")
+    | Some session -> 
+  let sanitized_request = { request with participant = Session.participant session } in
+  let%map () = Pipe.write_if_open request_writer sanitized_request in
   Ok ()
 ;;
 
@@ -28,6 +42,25 @@ let start_matching_loop ~engine ~dispatcher request_reader =
     (Pipe.iter_without_pushback request_reader ~f:(fun request ->
        let events = Matching_engine.submit engine request in
        Dispatcher.dispatch dispatcher events))
+;;
+
+let on_close_hook _conn dispatcher session =
+  match session with
+  | None -> ()
+  | Some active_session ->
+    don't_wait_for
+      (Async.Deferred.bind
+         (Rpc.Connection.close_finished _conn)
+         ~f:(fun () -> Dispatcher.clean_up_session dispatcher active_session))
+;;
+
+let handle_login dispatcher name =
+  match String.strip name with
+  | s when String.is_empty s -> return (Or_error.error_string "empty string")
+  | s ->
+    let participant = Participant.of_string s in
+    let%bind () = Dispatcher.set_up_session dispatcher participant in
+    return (Or_error.return participant)
 ;;
 
 let start ~symbols ~port () =
@@ -42,8 +75,7 @@ let start ~symbols ~port () =
         [ Rpc.Rpc.implement
             Rpc_protocol.submit_order_rpc
             (fun state request ->
-               ignore state;
-               handle_submit ~request_writer request)
+               handle_submit ~request_writer request state)
         ; Rpc.Rpc.implement' Rpc_protocol.book_query_rpc (fun state symbol ->
             ignore state;
             Matching_engine.book engine symbol
@@ -56,6 +88,18 @@ let start ~symbols ~port () =
                  Dispatcher.subscribe_market_data dispatcher symbols
                in
                return (Ok reader))
+        ; Rpc.Rpc.implement
+            Rpc_protocol.login_rpc
+            (fun (state : Connection_state.t) (name : string) ->
+               let%bind participant_or_error =
+                 handle_login dispatcher name
+               in
+               (match participant_or_error with
+                | Ok participant ->
+                  state.session
+                  <- Some (Dispatcher.get_session_exn dispatcher participant)
+                | Error _ -> ());
+               return participant_or_error)
         ; Rpc.Pipe_rpc.implement Rpc_protocol.audit_log_rpc (fun state () ->
             ignore state;
             let reader = Dispatcher.subscribe_audit dispatcher in
@@ -67,7 +111,10 @@ let start ~symbols ~port () =
   let%map tcp_server =
     Rpc.Connection.serve
       ~implementations
-      ~initial_connection_state:(fun _addr _conn -> ())
+      ~initial_connection_state:(fun _addr _conn ->
+        let initial_connection_state = ({ session = None } : Connection_state.t) in
+        on_close_hook _conn dispatcher initial_connection_state.session;
+      initial_connection_state)
       ~where_to_listen:(Tcp.Where_to_listen.of_port port)
       ()
   in

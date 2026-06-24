@@ -30,8 +30,11 @@ let make_recording_bot
   ?(initial_price_cents = 15000)
   ()
   =
+  let (login_name : string option ref) = ref None in
   let submitted = ref [] in
   let cancelled = ref [] in
+  let login name =
+    login_name := Some name; Deferred.Or_error.return (Participant.of_string name) in
   let submit request =
     submitted := request :: !submitted;
     return (Ok ())
@@ -50,11 +53,12 @@ let make_recording_bot
       ~participant:alice
       ~oracle
       ~rng:(Splittable_random.of_int 7)
+      ~login
       ~submit
       ~cancel
       ~tick_interval:(Time_ns.Span.of_sec 1.0)
   in
-  bot, submitted, cancelled
+  bot, login_name, submitted, cancelled
 ;;
 
 let print_submitted (submitted : Order.Request.t list ref) =
@@ -84,7 +88,7 @@ module Inert_bot = struct
 end
 
 let%expect_test "make_recording_bot wires up a runnable bot" =
-  let bot, submitted, _cancelled =
+  let bot, _login_name, submitted, _cancelled =
     make_recording_bot (module Inert_bot) () ()
   in
   let%bind () =
