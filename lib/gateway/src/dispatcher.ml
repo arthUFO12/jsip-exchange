@@ -104,6 +104,7 @@ let dispatch_event t (event : Exchange_event.t) =
       ; symbol = _
       ; remaining_size = _
       ; reason = _
+      ; client_order_id = _
       } ->
     push_to_session t participant event
   | Fill
@@ -113,9 +114,11 @@ let dispatch_event t (event : Exchange_event.t) =
       ; size = _
       ; aggressor_order_id = _
       ; aggressor_participant
+      ; aggressor_client_order_id = _
       ; aggressor_side = _
       ; resting_order_id = _
       ; resting_participant
+      ; resting_client_order_id = _
       } ->
     push_to_session t aggressor_participant event;
     push_to_session t resting_participant event

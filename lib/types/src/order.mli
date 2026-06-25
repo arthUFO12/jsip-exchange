@@ -17,6 +17,7 @@ module Request : sig
     ; price : Price.t
     ; size : Size.t (** Number of shares/units. Must be positive. *)
     ; time_in_force : Time_in_force.t
+    ; client_order_id : Client_order_id.t
     }
   [@@deriving sexp, bin_io]
 
@@ -48,7 +49,7 @@ val remaining_size : t -> Size.t
 val time_in_force : t -> Time_in_force.t
 val better_price_time : Side.t -> ord1:t -> ord2:t -> bool
 val price_time_cmp : Side.t -> t -> t -> int (* Doesn't have named arguments due to need for compatibility with List.sort *)
-
+val client_order_id :  t -> Client_order_id.t
 
 (** {2 Mutation}
 

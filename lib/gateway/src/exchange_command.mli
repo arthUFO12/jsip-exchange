@@ -8,4 +8,4 @@ type t =
 
 val to_string : t -> string
 
-val parse : ?default_participant:Participant.t -> string -> t Or_error.t
+val parse : participant:Participant.t -> string -> t Or_error.t

@@ -9,9 +9,11 @@ let%expect_test "notional_cents: price * size" =
      ; size = Size.of_int 100
      ; aggressor_order_id = Order_id.of_string "1"
      ; aggressor_participant = Participant.of_string "Alice"
+     ; aggressor_client_order_id = Client_order_id.create ()
      ; aggressor_side = Buy
      ; resting_order_id = Order_id.of_string "2"
      ; resting_participant = Participant.of_string "Bob"
+     ; resting_client_order_id = Client_order_id.create ()
      }
      : Fill.t)
   in

@@ -43,9 +43,11 @@ let rec match_loop ~book ~order ~fill_id =
           ; size = fill_size
           ; aggressor_order_id = Order.order_id order
           ; aggressor_participant = Order.participant order
+          ; aggressor_client_order_id = Order.client_order_id order
           ; aggressor_side = Order.side order
           ; resting_order_id = Order.order_id resting
           ; resting_participant = Order.participant resting
+          ; resting_client_order_id = Order.client_order_id resting
           }
       in
       let trade_event =
@@ -91,6 +93,7 @@ let submit t (request : Order.Request.t) =
               ; symbol = Order.symbol order
               ; remaining_size = Order.remaining_size order
               ; reason = Ioc_remainder
+              ; client_order_id = request.client_order_id
               }
           ])
       else []

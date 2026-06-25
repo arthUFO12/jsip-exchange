@@ -60,6 +60,7 @@ let book_with_n_asks ?(min_price = 10_000) n =
         ; price = Price.of_int_cents (min_price + i)
         ; size = Size.of_int 100
         ; time_in_force = Day
+        ; client_order_id = Client_order_id.create ()
         }
         ~order_id:(Order_id.Generator.next gen)
     in
@@ -81,6 +82,7 @@ let engine_with_n_asks ?(min_price = 10_000) n =
          ; price = Price.of_int_cents (min_price + i)
          ; size = Size.of_int 100
          ; time_in_force = Day
+         ; client_order_id = Client_order_id.create ()
          }
        : Exchange_event.t list)
   done;
@@ -95,6 +97,7 @@ let bench_find_match ~n =
   let min_price = 10_000 in
   let book, gen = book_with_n_asks ~min_price n in
   (* Incoming buy at a price that matches the best ask *)
+  let alice_client_order_id = Client_order_id.create () in
   let incoming =
     Order.create
       { symbol = aapl
@@ -103,6 +106,7 @@ let bench_find_match ~n =
       ; price = Price.of_int_cents (min_price + n)
       ; size = Size.of_int 100
       ; time_in_force = Ioc
+      ; client_order_id = alice_client_order_id
       }
       ~order_id:(Order_id.Generator.next gen)
   in
@@ -122,6 +126,7 @@ let bench_find_match_no_cross ~n =
       ; price = Price.of_int_cents (min_price - 1)
       ; size = Size.of_int 100
       ; time_in_force = Ioc
+      ; client_order_id = Client_order_id.create ()
       }
       ~order_id:(Order_id.Generator.next gen)
   in
@@ -147,6 +152,7 @@ let bench_add_remove ~n =
       ; price = Price.of_int_cents (min_price + 500)
       ; size = Size.of_int 100
       ; time_in_force = Day
+      ; client_order_id = Client_order_id.create ()
       }
       ~order_id:(Order_id.Generator.next gen)
   in
@@ -180,6 +186,7 @@ let bench_submit_ioc_cross ~n =
            ; price = Price.of_int_cents max_price
            ; size = Size.of_int 100
            ; time_in_force = Ioc
+           ; client_order_id = Client_order_id.create ()
            }
        in
        ignore (events : Exchange_event.t list);
@@ -193,6 +200,7 @@ let bench_submit_ioc_cross ~n =
             ; price = Price.of_int_cents !next_price
             ; size = Size.of_int 100
             ; time_in_force = Day
+            ; client_order_id = Client_order_id.create ()
             }
           : Exchange_event.t list);
        next_price := !next_price + 1;
@@ -212,6 +220,7 @@ let bench_submit_ioc_no_match ~n =
          ; price = Price.of_int_cents (min_price - 1)
          ; size = Size.of_int 100
          ; time_in_force = Ioc
+         ; client_order_id = Client_order_id.create ()
          }
        : Exchange_event.t list))
 ;;
@@ -231,6 +240,7 @@ let bench_submit_sweep ~n =
          ; price = Price.of_int_cents 99_999
          ; size = Size.of_int (n * 100)
          ; time_in_force = Ioc
+         ; client_order_id = Client_order_id.create ()
          }
        : Exchange_event.t list);
     (* Re-seed entire book *)
@@ -252,6 +262,7 @@ let bench_find_match_alloc ~n =
       ; price = Price.of_int_cents (min_price + n)
       ; size = Size.of_int 100
       ; time_in_force = Ioc
+      ; client_order_id = Client_order_id.create ()
       }
       ~order_id:(Order_id.Generator.next gen)
   in

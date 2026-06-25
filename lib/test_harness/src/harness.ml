@@ -32,6 +32,7 @@ let make_request
   ?(symbol = aapl)
   ?(participant = alice)
   ?(time_in_force = Time_in_force.Day)
+  ?(client_order_id = Client_order_id.create ())
   ()
   : Order.Request.t
   =
@@ -41,6 +42,7 @@ let make_request
   ; price = Price.of_int_cents price_cents
   ; size = Size.of_int size
   ; time_in_force
+  ; client_order_id
   }
 ;;
 
@@ -93,6 +95,8 @@ let submit_ t request = ignore (submit t request : Exchange_event.t list)
 let submit_quiet t request = Matching_engine.submit (engine t) request
 
 let sample_events : Exchange_event.t list =
+  let resting_client_order_id = Client_order_id.create () in
+  let aggressor_client_order_id = Client_order_id.create () in
   let order_request : Order.Request.t =
     { symbol = aapl
     ; participant = alice
@@ -100,6 +104,7 @@ let sample_events : Exchange_event.t list =
     ; price = Price.of_int_cents 15000
     ; size = Size.of_int 100
     ; time_in_force = Day
+    ; client_order_id = resting_client_order_id
     }
   in
   [ Order_accept
@@ -110,10 +115,12 @@ let sample_events : Exchange_event.t list =
       ; price = Price.of_int_cents 15000
       ; size = Size.of_int 100
       ; aggressor_order_id = Order_id.For_testing.of_int 2
+      ; aggressor_client_order_id
       ; aggressor_participant = alice
       ; aggressor_side = Buy
       ; resting_order_id = Order_id.For_testing.of_int 1
       ; resting_participant = bob
+      ; resting_client_order_id
       }
   ; Order_cancel
       { order_id = Order_id.For_testing.of_int 1
@@ -121,6 +128,7 @@ let sample_events : Exchange_event.t list =
       ; symbol = aapl
       ; remaining_size = Size.of_int 50
       ; reason = Ioc_remainder
+      ; client_order_id = resting_client_order_id
       }
   ; Order_reject { request = order_request; reason = "unknown symbol" }
   ; Best_bid_offer_update

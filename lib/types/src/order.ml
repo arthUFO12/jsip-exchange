@@ -8,16 +8,17 @@ module Request = struct
     ; price : Price.t
     ; size : Size.t
     ; time_in_force : Time_in_force.t
+    ; client_order_id : Client_order_id.t
     }
   [@@deriving sexp, bin_io]
 
 
-  let to_string { symbol; participant; side; price; size; time_in_force } =
+  let to_string { symbol; participant; side; price; size; time_in_force; client_order_id } =
     let price = Price.to_string_dollar price in
     let size = Size.to_int size in
     [%string
       "%{side#Side} %{symbol#Symbol} %{size#Int}@%{price} \
-       %{time_in_force#Time_in_force} as %{participant#Participant}"]
+       %{time_in_force#Time_in_force} as %{participant#Participant} (id: %{client_order_id#Client_order_id})"]
   ;;
 end
 
@@ -30,6 +31,7 @@ type t =
   ; size : Size.t
   ; mutable remaining_size : Size.t
   ; time_in_force : Time_in_force.t
+  ; client_order_id : Client_order_id.t
   }
 [@@deriving sexp_of, equal, compare]
 
@@ -42,6 +44,7 @@ let to_string
    ; size = _
    ; remaining_size
    ; time_in_force = _
+   ; client_order_id = _
    } :
     t)
   =
@@ -65,9 +68,11 @@ let create (req : Request.t) ~order_id =
   ; size = req.size
   ; remaining_size = req.size
   ; time_in_force = req.time_in_force
+  ; client_order_id = req.client_order_id
   }
 ;;
 
+let client_order_id t = t.client_order_id
 let order_id t = t.order_id
 let symbol t = t.symbol
 let participant t = t.participant

@@ -11,12 +11,24 @@ open! Async
 open Jsip_types
 open Jsip_gateway
 
+let rec print_events_forever pipe =
+  let%bind exchange_event = Pipe.read pipe in
+  match exchange_event with 
+    | `Eof -> return ()
+    | `Ok exch_event ->
+  (print_endline (Exchange_event.to_string exch_event);
+  print_events_forever pipe);;
+
+
 let run_client ~host ~port ~participant_name =
   let where_to_connect =
     Tcp.Where_to_connect.of_host_and_port { host; port }
   in
   let%bind conn = Rpc.Connection.client where_to_connect >>| Result.ok_exn in
   let%bind.Deferred.Or_error participant = Rpc.Rpc.dispatch_exn Rpc_protocol.login_rpc conn participant_name in
+  let%bind feed_pipe, _metadata = Rpc.Pipe_rpc.dispatch_exn Rpc_protocol.session_feed_rpc conn () in
+  don't_wait_for (print_events_forever feed_pipe);
+  
   print_endline
     [%string
       {|
@@ -40,7 +52,7 @@ market-data feed.|}];
       then loop ()
       else (
         match
-          (Exchange_command.parse line : Exchange_command.t Or_error.t)
+          (Exchange_command.parse ~participant line : Exchange_command.t Or_error.t)
         with
         | Error err ->
           print_endline (Error.to_string_hum err);

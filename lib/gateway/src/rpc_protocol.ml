@@ -39,6 +39,14 @@ let login_rpc =
     ~bin_response: [%bin_type_class: Participant.t Or_error.t]
     
 
+let session_feed_rpc =
+  Rpc.Pipe_rpc.create 
+  ~name:"session-feed"
+  ~version:1
+  ~bin_query: Unit.bin_t
+  ~bin_response: Exchange_event.bin_t
+  ~bin_error: Error.bin_t
+  ()
 let audit_log_rpc =
   Rpc.Pipe_rpc.create
     ~name:"audit-log"

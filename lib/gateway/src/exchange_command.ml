@@ -37,7 +37,7 @@ let handle_book_or_subscribe
 let handle_buy_or_sell
   (buy_or_sell : Verb.t)
   (rest_of_line : string list)
-  ~(default_participant : Participant.t option)
+  ~(participant : Participant.t)
   : t Or_error.t
   =
   match buy_or_sell with
@@ -47,29 +47,12 @@ let handle_buy_or_sell
     (match rest_of_line with
      (* for SELL and BUY, command should have
         [ verb symbol size price time_in_force optional<participant> ] *)
-     | symbol_str :: size_str :: price_str :: rest ->
+     | client_order_id_str :: symbol_str :: size_str :: price_str :: tif_str :: _ ->
+       let client_order_id = Client_order_id.of_string client_order_id_str in
        let size = Size.of_string size_str in
        let symbol = Symbol.of_string symbol_str in
        let price = Price.of_string price_str in
-       let open Result.Let_syntax in
-       let%bind time_in_force, rest =
-         match rest with
-         | tif_str :: rest' ->
-           (match String.uppercase tif_str with
-            | "AS" -> Ok (Time_in_force.Day, rest)
-            | str -> Ok (Time_in_force.of_string str, rest'))
-         | [] -> Ok (Day, [])
-       in
-       let%bind possible_participant =
-         match rest with
-         | "as" :: name :: _ | "AS" :: name :: _ ->
-           Ok (Some (Participant.of_string name))
-         | [] -> Ok None
-         | _ ->
-           let trailing = String.concat ~sep:" " rest in
-           Or_error.error_string
-                [%string "unexpected trailing arguments: %{trailing}"]
-       in
+       let time_in_force = Time_in_force.of_string tif_str in
        Ok
          (Submit
             { side =
@@ -80,12 +63,9 @@ let handle_buy_or_sell
             ; size
             ; price
             ; time_in_force
-            ; participant =
-                (match possible_participant, default_participant with
-                 | None, None -> Participant.of_string "anonymous"
-                 | None, Some def_participant -> def_participant
-                 | Some new_participant, _ -> new_participant)
+            ; participant = participant
             ; symbol
+            ; client_order_id = client_order_id
             })
      | _ -> Or_error.error_string "expected: BUY|SELL <symbol> <size> <price> [DAY|IOC] [as <name>]")
 ;;
@@ -95,7 +75,7 @@ let handle_buy_or_sell
    optional default_participant argument Output: Exchange_command.t
    describing the string command sent to the exchange *)
 
-let parse ?default_participant command_string : t Or_error.t =
+let parse ~participant command_string : t Or_error.t =
   match String.split command_string ~on:' ' |> List.map ~f:String.strip |> List.filter ~f:(fun str -> not (String.is_empty str)) with
   | [] -> Or_error.error_string "empty command"
   | first_word :: rest ->
@@ -107,7 +87,7 @@ let parse ?default_participant command_string : t Or_error.t =
        handle_book_or_subscribe book_or_sub rest
        (* in the BOOK case, we just return a Book.t variant of the exchange
           command with the ticker *)
-     | (Buy | Sell) as buy_or_sell -> handle_buy_or_sell buy_or_sell rest ~default_participant)
+     | (Buy | Sell) as buy_or_sell -> handle_buy_or_sell buy_or_sell rest ~participant)
 ;;
 
 let to_string comm =

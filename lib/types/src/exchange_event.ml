@@ -5,6 +5,7 @@ type t =
       { order_id : Order_id.t
       ; request : Order.Request.t
       }
+      [@nested]
   | Fill of Fill.t
   | Order_cancel of
       { order_id : Order_id.t
@@ -12,6 +13,7 @@ type t =
       ; symbol : Symbol.t
       ; remaining_size : Size.t
       ; reason : Cancel_reason.t
+      ; client_order_id : Client_order_id.t
       }
   | Order_reject of
       { request : Order.Request.t
@@ -32,6 +34,13 @@ let is_market_data = function
   | Best_bid_offer_update _ | Trade_report _ -> true
   | Order_accept _ | Fill _ | Order_cancel _ | Order_reject _ -> false
 ;;
+let to_string t = match t with 
+  | Order_accept {order_id; request} -> (Order_id.to_string order_id) ^ (Order.Request.to_string request)
+  | Fill fill -> Fill.to_participant_view fill
+  | Order_cancel {order_id; participant; reason; _} -> (Order_id.to_string order_id) ^ (Participant.to_string participant) ^ (Cancel_reason.to_string reason)
+  | Order_reject {request; reason} -> (Order.Request.to_string request) ^ reason
+  | Best_bid_offer_update {symbol; bbo} -> (Symbol.to_string symbol) ^ (Bbo.to_string bbo)
+  | Trade_report {symbol; _} -> (Symbol.to_string symbol)
 
 let symbol_of_market_data = function
   | Best_bid_offer_update { symbol; bbo = _ }

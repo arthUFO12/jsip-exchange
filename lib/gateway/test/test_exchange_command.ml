@@ -3,8 +3,9 @@ open Jsip_types
 open Jsip_gateway
 
 
+let test_participant = Participant.of_string "Bob"
 let print_parse line =
-  match Or_error.join (Or_error.try_with (fun () -> Exchange_command.parse line)) with
+  match Or_error.join (Or_error.try_with (fun () -> Exchange_command.parse ~participant:test_participant line)) with
   | Error msg -> print_endline [%string "ERROR: %{Error.to_string_hum msg}"]
   | Ok comm -> print_endline [%string "%{comm#Exchange_command}"]
 ;;
@@ -133,7 +134,7 @@ let%expect_test "parse error: unknown time-in-force" =
 let%expect_test "default participant: used when none specified" =
   let default = Participant.of_string "DefaultTrader" in
   let req =
-    Exchange_command.parse "BUY AAPL 100 150.00" ~default_participant:default
+    Exchange_command.parse "BUY AAPL 100 150.00" ~participant:default
     |> submit_or_error
     |> ok_exn
   in
@@ -146,7 +147,7 @@ let%expect_test "default participant: overridden by explicit 'as'" =
   let req =
     Exchange_command.parse
       "BUY AAPL 100 150.00 as Alice"
-      ~default_participant:default
+      ~participant:default
     |> submit_or_error
     |> ok_exn
   in

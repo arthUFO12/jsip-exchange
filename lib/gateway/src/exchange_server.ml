@@ -6,11 +6,13 @@ open Jsip_order_book
 module type Connection_state_sig = sig
   type t = { mutable session : Session.t option }
 
+  val _participant : t -> Participant.t option
 end
 
 module Connection_state : Connection_state_sig = struct
   type t = { mutable session : Session.t option }
 
+  let _participant t = Option.map t.session ~f:Session.participant
 end
 
 type t =
@@ -28,13 +30,19 @@ type t =
    without the server's memory growing unboundedly. *)
 let request_queue_size_budget = 1024
 
-let handle_submit ~request_writer (request : Order.Request.t) (state: Connection_state.t) =
-  match state.session with 
-    | None -> return (Or_error.error_string "not logged in")
-    | Some session -> 
-  let sanitized_request = { request with participant = Session.participant session } in
-  let%map () = Pipe.write_if_open request_writer sanitized_request in
-  Ok ()
+let handle_submit
+  ~request_writer
+  (request : Order.Request.t)
+  (state : Connection_state.t)
+  =
+  match state.session with
+  | None -> return (Or_error.error_string "not logged in")
+  | Some session ->
+    let sanitized_request =
+      { request with participant = Session.participant session }
+    in
+    let%map () = Pipe.write_if_open request_writer sanitized_request in
+    Ok ()
 ;;
 
 let start_matching_loop ~engine ~dispatcher request_reader =
@@ -44,23 +52,28 @@ let start_matching_loop ~engine ~dispatcher request_reader =
        Dispatcher.dispatch dispatcher events))
 ;;
 
-let on_close_hook _conn dispatcher session =
+let on_close_hook conn dispatcher session =
   match session with
   | None -> ()
   | Some active_session ->
     don't_wait_for
-      (Async.Deferred.bind
-         (Rpc.Connection.close_finished _conn)
-         ~f:(fun () -> Dispatcher.clean_up_session dispatcher active_session))
+      (Async.Deferred.bind (Rpc.Connection.close_finished conn) ~f:(fun () ->
+         Dispatcher.clean_up_session dispatcher active_session))
 ;;
 
 let handle_login dispatcher name =
   match String.strip name with
-  | s when String.is_empty s -> return (Or_error.error_string "empty string")
+  | "" -> return (Or_error.error_string "empty string")
   | s ->
     let participant = Participant.of_string s in
     let%bind () = Dispatcher.set_up_session dispatcher participant in
-    return (Or_error.return participant)
+    return (Ok participant)
+;;
+
+let handle_session_feed (state : Connection_state.t) =
+  match state.session with
+  | None -> Deferred.Or_error.error_string "not logged in"
+  | Some session -> Deferred.Or_error.return (Session.reader session)
 ;;
 
 let start ~symbols ~port () =
@@ -88,6 +101,10 @@ let start ~symbols ~port () =
                  Dispatcher.subscribe_market_data dispatcher symbols
                in
                return (Ok reader))
+        ; Rpc.Pipe_rpc.implement
+            Rpc_protocol.session_feed_rpc
+            (fun (state : Connection_state.t) () ->
+               handle_session_feed state)
         ; Rpc.Rpc.implement
             Rpc_protocol.login_rpc
             (fun (state : Connection_state.t) (name : string) ->
@@ -111,10 +128,12 @@ let start ~symbols ~port () =
   let%map tcp_server =
     Rpc.Connection.serve
       ~implementations
-      ~initial_connection_state:(fun _addr _conn ->
-        let initial_connection_state = ({ session = None } : Connection_state.t) in
-        on_close_hook _conn dispatcher initial_connection_state.session;
-      initial_connection_state)
+      ~initial_connection_state:(fun _addr conn ->
+        let initial_connection_state =
+          ({ session = None } : Connection_state.t)
+        in
+        on_close_hook conn dispatcher initial_connection_state.session;
+        initial_connection_state)
       ~where_to_listen:(Tcp.Where_to_listen.of_port port)
       ()
   in

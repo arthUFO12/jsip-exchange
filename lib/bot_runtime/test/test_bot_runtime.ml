@@ -77,9 +77,11 @@ let fill_event : Exchange_event.t =
     ; size = Size.of_int 50
     ; aggressor_order_id = Order_id.For_testing.of_int 1
     ; aggressor_participant = alice
+    ; aggressor_client_order_id = Client_order_id.create ()
     ; aggressor_side = Buy
     ; resting_order_id = Order_id.For_testing.of_int 2
     ; resting_participant = bob
+    ; resting_client_order_id = Client_order_id.create ()
     }
 ;;
 
@@ -93,6 +95,7 @@ let accepted_event : Exchange_event.t =
         ; price = Price.of_int_cents 15000
         ; size = Size.of_int 10
         ; time_in_force = Day
+        ; client_order_id = Client_order_id.create ()
         }
     }
 ;;
