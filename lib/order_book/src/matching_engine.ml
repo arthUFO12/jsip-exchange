@@ -63,10 +63,31 @@ let rec match_loop ~book ~order ~fill_id =
       fill_event :: trade_event :: remaining_events, next_fill_id)
 ;;
 
+let cancel t (order : Order.t) =
+  let book = Map.find t.books (Order.symbol order) in
+  
+  match book with
+  | None -> Or_error.error_string "symbol not listed"
+  | Some book ->
+    let bbo = Order_book.best_bid_offer book in
+    if Order_book.remove_with_confirmation book (Order.order_id order)
+    then (
+      let order_price = Order.price order in
+      Or_error.return
+        (match Bbo.price bbo Buy, Bbo.price bbo Sell with
+         | Some best_bid, Some best_ask ->
+           Price.equal order_price best_bid
+           || Price.equal order_price best_ask
+         | _, _ -> false))
+    else Or_error.error_string "order not found in book"
+;;
+
 let submit t (request : Order.Request.t) =
   match Map.find t.books request.symbol with
   | None ->
-    [ Exchange_event.Order_reject { request; reason = "unknown symbol" } ]
+    ( None
+    , [ Exchange_event.Order_reject { request; reason = "unknown symbol" } ]
+    )
   | Some book ->
     let order_id = Order_id.Generator.next t.order_id_gen in
     let order = Order.create request ~order_id in
@@ -108,5 +129,6 @@ let submit t (request : Order.Request.t) =
             { symbol = Order.symbol order; bbo = bbo_after }
         ]
     in
-    List.concat [ [ accepted ]; fill_events; post_events; bbo_events ]
+    ( Some order
+    , List.concat [ [ accepted ]; fill_events; post_events; bbo_events ] )
 ;;

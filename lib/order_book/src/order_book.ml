@@ -2,8 +2,6 @@ open! Core
 open Jsip_types
 module IntMap = Map.Make (Int)
 
-
-
 type t =
   { symbol : Symbol.t
   ; bids : Book_side.t
@@ -34,11 +32,15 @@ let add t order =
 
 let remove' t order_id =
   match Book_side.remove t.bids order_id with
-  | Some result -> Some result
+  | Some _ as result -> result
   | None -> Book_side.remove t.asks order_id
 ;;
 
 let remove t order_id = ignore (remove' t order_id : Order.t option)
+
+let remove_with_confirmation t order_id =
+  match remove' t order_id with None -> false | Some _ -> true
+;;
 
 let find t order_id =
   match Book_side.find t.bids order_id with

@@ -1,7 +1,6 @@
 open! Core
 open Jsip_types
 
-
 let format_event = function
   | Exchange_event.Order_accept { order_id; request } ->
     sprintf
@@ -14,7 +13,13 @@ let format_event = function
       (Time_in_force.to_string request.time_in_force)
   | Fill fill -> [%string "FILL %{fill#Fill}"]
   | Order_cancel
-      { order_id; participant = _; symbol; remaining_size; reason; client_order_id } ->
+      { order_id
+      ; participant = _
+      ; symbol
+      ; remaining_size
+      ; reason
+      ; client_order_id
+      } ->
     sprintf
       "CANCELLED id=%s %s client_order_id=%s remaining=%d reason=%s"
       (Order_id.to_string order_id)
@@ -22,7 +27,6 @@ let format_event = function
       (Client_order_id.to_string client_order_id)
       (Size.to_int remaining_size)
       (Cancel_reason.to_string reason)
-
   | Order_reject { request; reason } ->
     sprintf
       "REJECTED %s %s %d@%s reason=%s"
@@ -38,6 +42,10 @@ let format_event = function
   | Trade_report { symbol; price; size } ->
     let size = Size.to_int size in
     [%string "TRADE %{symbol#Symbol} %{price#Price} x%{size#Int}"]
+  | Cancel_reject { participant = _; client_order_id; reason } ->
+    [%string
+      "CANCEL REJECTED coid=%{client_order_id#Client_order_id} \
+       reason=%{reason}"]
 ;;
 
 let format_events events =

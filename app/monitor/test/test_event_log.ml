@@ -39,8 +39,8 @@ let%expect_test "events appear in insertion order" =
     {|
     count=6
     ACCEPTED id=1 AAPL BUY 100@$150.00 DAY
-    FILL fill_id=1 AAPL $150.00 x100 aggressor=2(Alice) BUY resting=1(Bob)
-    CANCELLED id=1 AAPL remaining=50 reason=IOC_REMAINDER
+    FILL fill_id=1 AAPL $150.00 x100 aggressor=2(Alice) aggressor_coid=(2) BUY resting=1(Bob) resting_coid=(1)
+    CANCELLED id=1 AAPL client_order_id=1 remaining=50 reason=IOC_REMAINDER
     REJECTED AAPL BUY 100@$150.00 reason=unknown symbol
     BBO AAPL bid=$149.90 x100 ask=$150.10 x200
     TRADE AAPL $150.00 x100
@@ -56,7 +56,7 @@ let%expect_test "filter by substring keeps only matching lines" =
   in
   print_lines (Event_log.visible_lines log);
   [%expect
-    {| FILL fill_id=1 AAPL $150.00 x100 aggressor=2(Alice) BUY resting=1(Bob) |}]
+    {| FILL fill_id=1 AAPL $150.00 x100 aggressor=2(Alice) aggressor_coid=(2) BUY resting=1(Bob) resting_coid=(1) |}]
 ;;
 
 let%expect_test "substring filter is case-insensitive" =
@@ -79,7 +79,7 @@ let%expect_test "filter by category groups variants" =
   [%expect
     {|
     ACCEPTED id=1 AAPL BUY 100@$150.00 DAY
-    CANCELLED id=1 AAPL remaining=50 reason=IOC_REMAINDER
+    CANCELLED id=1 AAPL client_order_id=1 remaining=50 reason=IOC_REMAINDER
     REJECTED AAPL BUY 100@$150.00 reason=unknown symbol
     |}]
 ;;
@@ -119,8 +119,8 @@ let%expect_test "each event variant renders with its assigned color" =
   [%expect
     {|
     [green] ACCEPTED id=1 AAPL BUY 100@$150.00 DAY
-    [cyan] FILL fill_id=1 AAPL $150.00 x100 aggressor=2(Alice) BUY resting=1(Bob)
-    [yellow] CANCELLED id=1 AAPL remaining=50 reason=IOC_REMAINDER
+    [cyan] FILL fill_id=1 AAPL $150.00 x100 aggressor=2(Alice) aggressor_coid=(2) BUY resting=1(Bob) resting_coid=(1)
+    [yellow] CANCELLED id=1 AAPL client_order_id=1 remaining=50 reason=IOC_REMAINDER
     [red] REJECTED AAPL BUY 100@$150.00 reason=unknown symbol
     [blue] BBO AAPL bid=$149.90 x100 ask=$150.10 x200
     [magenta] TRADE AAPL $150.00 x100

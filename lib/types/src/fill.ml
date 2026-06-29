@@ -31,7 +31,7 @@ let to_string
     t)
   =
   sprintf
-    "fill_id=%d %s %s x%d aggressor=%s(%s) %s %s resting=%s(%s) %s"
+    "fill_id=%d %s %s x%d aggressor=%s(%s) aggressor_coid=(%s) %s resting=%s(%s) resting_coid=(%s)"
     fill_id
     (Symbol.to_string symbol)
     (Price.to_string_dollar price)

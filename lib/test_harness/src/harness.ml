@@ -46,6 +46,8 @@ let make_request
   }
 ;;
 
+
+
 let buy ~price_cents ?size ?symbol ?participant ?time_in_force () =
   make_request
     ~side:Buy
@@ -68,6 +70,10 @@ let sell ~price_cents ?size ?symbol ?participant ?time_in_force () =
     ()
 ;;
 
+let cancel client_order_id =
+  Client_order_id.of_int client_order_id
+
+
 (* --- Formatting --- *)
 
 module Show = struct
@@ -86,13 +92,13 @@ let print_events ?(show = Show.all) events =
 let print_event event = print_endline (Protocol.format_event event)
 
 let submit t request =
-  let events = Matching_engine.submit t.engine request in
+  let _order, events = Matching_engine.submit t.engine request in
   print_events events;
   events
 ;;
 
 let submit_ t request = ignore (submit t request : Exchange_event.t list)
-let submit_quiet t request = Matching_engine.submit (engine t) request
+let submit_quiet t request = Matching_engine.submit (engine t) request |> snd
 
 let sample_events : Exchange_event.t list =
   let resting_client_order_id = Client_order_id.create () in

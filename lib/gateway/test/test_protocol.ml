@@ -80,8 +80,8 @@ let%expect_test "format_event: all event types" =
   [%expect
     {|
     ACCEPTED id=1 AAPL BUY 100@$150.00 DAY
-    FILL fill_id=1 AAPL $150.00 x100 aggressor=2(Alice) BUY resting=1(Bob)
-    CANCELLED id=3 TSLA remaining=50 reason=IOC_REMAINDER
+    FILL fill_id=1 AAPL $150.00 x100 aggressor=2(Alice) aggressor_coid=(2) BUY resting=1(Bob) resting_coid=(1)
+    CANCELLED id=3 TSLA client_order_id=3 remaining=50 reason=IOC_REMAINDER
     REJECTED GOOG SELL 10@$280.00 reason=unknown symbol
     BBO AAPL bid=$149.90 x200 ask=$150.10 x100
     BBO AAPL bid=- ask=-
@@ -100,21 +100,23 @@ let%expect_test "round-trip: parse a command, submit, format result" =
     (Harness.sell ~price_cents:15000 ~participant:Harness.bob ());
   (* Parse a buy command from text and submit it *)
   let request =
-    Exchange_command.parse ~participant:Harness.bob "BUY AAPL 100 150.00 as Alice" |> ok_exn
+    Exchange_command.parse ~participant:Harness.alice "BUY 1 AAPL 100 150.00" |> ok_exn
   in
   match (request : Exchange_command.t) with
   | Book _ -> print_endline "Error"
   | Subscribe _ -> print_endline "Error"
+  | Cancel _ -> print_endline "Error"
   | Submit submit ->
-    let events = Matching_engine.submit (Harness.engine t) submit in
+    let _order, events = Matching_engine.submit (Harness.engine t) submit in
     print_endline (Protocol.format_events events);
     [%expect
       {|
-    ACCEPTED id=1 AAPL SELL 100@$150.00 DAY
-    BBO AAPL bid=- ask=$150.00 x100
-    ACCEPTED id=2 AAPL BUY 100@$150.00 DAY
-    FILL fill_id=1 AAPL $150.00 x100 aggressor=2(Alice) BUY resting=1(Bob)
-    TRADE AAPL $150.00 x100
-    BBO AAPL bid=- ask=-
-    |}]
+      ACCEPTED id=1 AAPL SELL 100@$150.00 DAY
+      BBO AAPL bid=- ask=$150.00 x100
+      ACCEPTED id=2 AAPL BUY 100@$150.00 DAY
+      FILL fill_id=1 AAPL $150.00 x100 aggressor=2(Alice) aggressor_coid=(1) BUY resting=1(Bob) resting_coid=(3)
+      TRADE AAPL $150.00 x100
+      BBO AAPL bid=- ask=-
+      |}]
 ;;
+

@@ -5,7 +5,6 @@ module T = struct
 end
 
 include T
-
 include Hashable.Make (T)
 
 

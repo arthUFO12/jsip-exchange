@@ -5,6 +5,7 @@ type t =
   | Submit of Order.Request.t
   | Book of Symbol.t
   | Subscribe of Symbol.t
+  | Cancel of Client_order_id.t
 
 val to_string : t -> string
 

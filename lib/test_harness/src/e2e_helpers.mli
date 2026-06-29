@@ -22,6 +22,11 @@ type client
 login subscribes to a feed of events for this participant *)
 val connect_as : port:int -> Participant.t -> client Deferred.t
 
+(** Does not log in or subscribe to a feed of events **)
+val connect_as_no_login : port:int -> Participant.t -> client Deferred.t
+
+
+val connect_as_no_sub : port:int -> Participant.t -> client Deferred.t
 (** The raw RPC connection, useful for tests that exercise unusual RPC paths
     (audit log subscriptions, second clients on the same connection, etc.). *)
 val connection : client -> Rpc.Connection.t
@@ -34,3 +39,6 @@ val rpc_submit : client -> Order.Request.t -> unit Deferred.t
 
 (** Query the book via RPC. *)
 val rpc_book : client -> Symbol.t -> Book.t option Deferred.t
+
+
+val rpc_cancel : client -> Client_order_id.t -> unit Or_error.t Deferred.t

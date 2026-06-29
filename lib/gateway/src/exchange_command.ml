@@ -8,6 +8,7 @@ module Verb = struct
     | Sell
     | Book
     | Subscribe
+    | Cancel
   [@@deriving
     sexp, string ~case_insensitive ~capitalize:"SCREAMING_SNAKE_CASE"]
 end
@@ -18,6 +19,7 @@ type t =
   | Submit of Order.Request.t
   | Book of Symbol.t
   | Subscribe of Symbol.t
+  | Cancel of Client_order_id.t
 
 let handle_book_or_subscribe
   (book_or_subscribe : Verb.t)
@@ -28,12 +30,18 @@ let handle_book_or_subscribe
   | Book, ticker :: _ -> Or_error.return (Book (Symbol.of_string ticker))
   | Subscribe, ticker :: _ ->
     Or_error.return (Subscribe (Symbol.of_string ticker))
-  | _, _ :: __ ->
+  | _, _ :: _ ->
     Or_error.error_string
       "Used handle book or subscribe for incorrect command"
   | _, [] -> Or_error.error_string "No ticker provided"
 ;;
 
+let handle_cancel (rest_of_line: string list) : t Or_error.t =
+  match rest_of_line with 
+    | coid_str :: _ -> (Cancel (Client_order_id.of_string coid_str)) |> Ok
+    | [] -> Or_error.error_string "no client order id given"
+
+    
 let handle_buy_or_sell
   (buy_or_sell : Verb.t)
   (rest_of_line : string list)
@@ -47,12 +55,12 @@ let handle_buy_or_sell
     (match rest_of_line with
      (* for SELL and BUY, command should have
         [ verb symbol size price time_in_force optional<participant> ] *)
-     | client_order_id_str :: symbol_str :: size_str :: price_str :: tif_str :: _ ->
+     | client_order_id_str :: symbol_str :: size_str :: price_str :: maybe_tif ->
        let client_order_id = Client_order_id.of_string client_order_id_str in
        let size = Size.of_string size_str in
        let symbol = Symbol.of_string symbol_str in
        let price = Price.of_string price_str in
-       let time_in_force = Time_in_force.of_string tif_str in
+       let time_in_force = match maybe_tif with [] -> Time_in_force.Day | tif_str :: _ -> Time_in_force.of_string tif_str in
        Ok
          (Submit
             { side =
@@ -67,7 +75,7 @@ let handle_buy_or_sell
             ; symbol
             ; client_order_id = client_order_id
             })
-     | _ -> Or_error.error_string "expected: BUY|SELL <symbol> <size> <price> [DAY|IOC] [as <name>]")
+     | _ -> Or_error.error_string "expected: BUY|SELL <coid> <symbol> <size> <price> [DAY|IOC]")
 ;;
 
 (* parse_exn: Sole function for parsing commands sent to the exchange. Can
@@ -87,7 +95,8 @@ let parse ~participant command_string : t Or_error.t =
        handle_book_or_subscribe book_or_sub rest
        (* in the BOOK case, we just return a Book.t variant of the exchange
           command with the ticker *)
-     | (Buy | Sell) as buy_or_sell -> handle_buy_or_sell buy_or_sell rest ~participant)
+     | (Buy | Sell) as buy_or_sell -> handle_buy_or_sell buy_or_sell rest ~participant
+     | Cancel -> handle_cancel rest)
 ;;
 
 let to_string comm =
@@ -95,4 +104,5 @@ let to_string comm =
   | Book book -> Symbol.to_string book
   | Subscribe subscribe -> Symbol.to_string subscribe
   | Submit submit -> Order.Request.to_string submit
+  | Cancel cancel -> Client_order_id.to_string cancel
 ;;

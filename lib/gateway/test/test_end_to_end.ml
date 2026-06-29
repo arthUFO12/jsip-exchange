@@ -13,6 +13,29 @@ open Jsip_test_harness
 open E2e_helpers
 
 (* ---------------------------------------------------------------- *)
+(* login test tests *)
+(* ---------------------------------------------------------------- *)
+
+let%expect_test "login: submit without login fails" =
+  with_server ~symbols:[ Harness.aapl ] (fun ~server:_ ~port ->
+    let%bind bob = connect_as_no_login ~port Harness.bob in
+    let bob_request =
+      Harness.sell ~price_cents:16000 ~participant:Harness.bob ()
+    in
+    let%bind _ = Deferred.Or_error.try_with (fun () -> rpc_submit bob bob_request) in
+    return [%expect {||}])
+;;
+
+
+let%expect_test "login: cancel without login fails" =
+  with_server ~symbols:[ Harness.aapl ] (fun ~server:_ ~port ->
+    let%bind bob = connect_as_no_login ~port Harness.bob in
+    let%bind () = rpc_cancel bob (Client_order_id.of_string "1") >>| Or_error.ok_exn in
+    return [%expect {||}])
+;;
+
+
+(* ---------------------------------------------------------------- *)
 (* Multiple client tests *)
 (* ---------------------------------------------------------------- *)
 
@@ -32,8 +55,8 @@ let%expect_test "e2e: two clients trade with each other" =
     [%expect
       {|
       [for Alice] ACCEPTED id=2 AAPL BUY 100@$150.00 DAY
-      [for Alice] FILL fill_id=1 AAPL $150.00 x100 aggressor=2(Alice) BUY resting=1(Bob)
-      [for Bob] FILL fill_id=1 AAPL $150.00 x100 aggressor=2(Alice) BUY resting=1(Bob)
+      [for Alice] FILL fill_id=1 AAPL $150.00 x100 aggressor=2(Alice) aggressor_coid=(5) BUY resting=1(Bob) resting_coid=(4)
+      [for Bob] FILL fill_id=1 AAPL $150.00 x100 aggressor=2(Alice) aggressor_coid=(5) BUY resting=1(Bob) resting_coid=(4)
       |}];
     return ())
 ;;
@@ -72,12 +95,10 @@ let%expect_test "e2e: three clients, sequential orders, shared book" =
     [%expect
       {|
       [for Alice] ACCEPTED id=3 AAPL BUY 80@$150.10 DAY
-      [for Alice] FILL fill_id=1 AAPL $150.00 x50 aggressor=3(Alice) BUY resting=1(Bob)
-      [for Bob] FILL fill_id=1 AAPL $150.00 x50 aggressor=3(Alice) BUY resting=1(Bob)
-      [for Alice] FILL fill_id=2 AAPL $150.10 x30 aggressor=3(Alice) BUY resting=2(Charlie)
-      [for Charlie] FILL fill_id=2 AAPL $150.10 x30 aggressor=3(Alice) BUY resting=2(Charlie)
-      
-      
+      [for Alice] FILL fill_id=1 AAPL $150.00 x50 aggressor=3(Alice) aggressor_coid=(8) BUY resting=1(Bob) resting_coid=(6)
+      [for Alice] FILL fill_id=2 AAPL $150.10 x30 aggressor=3(Alice) aggressor_coid=(8) BUY resting=2(Charlie) resting_coid=(7)
+      [for Bob] FILL fill_id=1 AAPL $150.00 x50 aggressor=3(Alice) aggressor_coid=(8) BUY resting=1(Bob) resting_coid=(6)
+      [for Charlie] FILL fill_id=2 AAPL $150.10 x30 aggressor=3(Alice) aggressor_coid=(8) BUY resting=2(Charlie) resting_coid=(7)
       |}];
     (* Verify book state *)
     let%bind book = rpc_book alice Harness.aapl in
@@ -91,6 +112,132 @@ let%expect_test "e2e: three clients, sequential orders, shared book" =
         BBO: - / $150.10 x20
       |}];
     return ())
+;;
+
+(* ---------------------------------------------------------------- *)
+(* order cancellation tests *)
+(* ---------------------------------------------------------------- *)
+let%expect_test "cancel: submit and cancel order" =
+  with_server ~symbols:[ Harness.aapl ] (fun ~server:_ ~port ->
+    let%bind alice = connect_as ~port Harness.alice in
+    let%bind bob = connect_as ~port Harness.bob in
+    let alice_request =
+      Harness.buy ~price_cents:15000 ~participant:Harness.alice ()
+    in
+    let bob_request =
+      Harness.sell ~price_cents:16000 ~participant:Harness.bob ()
+    in
+    let%bind () = rpc_submit alice alice_request in
+    let%bind () = rpc_submit bob bob_request in
+    let bob_coid = bob_request.client_order_id in
+    let%bind () = rpc_cancel bob bob_coid >>| Or_error.ok_exn in
+    return
+      [%expect
+        {|
+        [for Alice] ACCEPTED id=1 AAPL BUY 100@$150.00 DAY
+        [for Bob] ACCEPTED id=2 AAPL SELL 100@$160.00 DAY
+        [for Bob] CANCELLED id=2 AAPL client_order_id=10 remaining=100 reason=PARTICIPANT_REQUESTED
+        |}])
+;;
+
+let%expect_test "cancel: reject duplicate order ids" =
+  with_server ~symbols:[ Harness.aapl ] (fun ~server:_ ~port ->
+    let%bind bob = connect_as ~port Harness.bob in
+    let bob_request =
+      Harness.sell ~price_cents:16000 ~participant:Harness.bob ()
+    in
+    let bob_duplicate_coid_request =
+      { bob_request with price = Price.of_int_cents 17000 }
+    in
+    let%bind () = rpc_submit bob bob_request in
+    let%bind _ =
+      Deferred.Or_error.try_with (fun () ->
+        rpc_submit bob bob_duplicate_coid_request)
+    in
+    return
+      [%expect
+        {|
+           [for Bob] ACCEPTED id=1 AAPL SELL 100@$160.00 DAY
+           [for Bob] REJECTED AAPL SELL 100@$170.00 reason=duplicate client order id
+           |}])
+;;
+
+let%expect_test "cancel: already filled order fails to be cancelled" =
+  with_server ~symbols:[ Harness.aapl ] (fun ~server:_ ~port ->
+    let%bind alice = connect_as ~port Harness.alice in
+    let%bind bob = connect_as ~port Harness.bob in
+    let alice_request =
+      Harness.buy ~price_cents:15000 ~participant:Harness.alice ()
+    in
+    let bob_request =
+      Harness.sell ~price_cents:15000 ~participant:Harness.bob ()
+    in
+    let%bind () = rpc_submit alice alice_request in
+    let%bind () = rpc_submit bob bob_request in
+    let bob_coid = bob_request.client_order_id in
+    let%bind () = rpc_cancel bob bob_coid >>| Or_error.ok_exn in
+    return
+      [%expect
+        {|
+        [for Alice] ACCEPTED id=1 AAPL BUY 100@$150.00 DAY
+        [for Bob] ACCEPTED id=2 AAPL SELL 100@$150.00 DAY
+        [for Bob] FILL fill_id=1 AAPL $150.00 x100 aggressor=2(Bob) aggressor_coid=(13) SELL resting=1(Alice) resting_coid=(12)
+        [for Alice] FILL fill_id=1 AAPL $150.00 x100 aggressor=2(Bob) aggressor_coid=(13) SELL resting=1(Alice) resting_coid=(12)
+        [for Bob] CANCEL REJECTED coid=13 reason=order not found in book
+        |}])
+;;
+
+let%expect_test "cancel: non-existent order cancel fails" =
+  with_server ~symbols:[ Harness.aapl ] (fun ~server:_ ~port ->
+    let%bind bob = connect_as ~port Harness.bob in
+    let%bind () =
+      rpc_cancel bob (Client_order_id.of_string "1") >>| Or_error.ok_exn
+    in
+    return [%expect {| [for Bob] CANCEL REJECTED coid=1 reason=not found |}])
+;;
+
+let%expect_test "cancel: market data subscribers see bbo update" =
+  with_server ~symbols:[ Harness.aapl ] (fun ~server:_ ~port ->
+    let%bind alice = connect_as ~port Harness.alice in
+    let%bind bob = connect_as ~port Harness.bob in
+    let%bind md_subscriber =
+      connect_as ~port (Participant.of_string "sub")
+    in
+    let%bind result =
+      Rpc.Pipe_rpc.dispatch
+        Rpc_protocol.market_data_rpc
+        (connection md_subscriber)
+        [ Harness.aapl ]
+    in
+    let reader =
+      match result with
+      | Ok (Ok (reader, _id)) -> reader
+      | _ -> failwith "subscribe failed"
+    in
+    don't_wait_for
+      (Pipe.iter_without_pushback reader ~f:(fun event ->
+         let e = Protocol.format_event event in
+         print_endline [%string "[MD Subscriber] %{e}"]));
+    let alice_request =
+      Harness.buy ~price_cents:15000 ~participant:Harness.alice ()
+    in
+    let bob_request =
+      Harness.sell ~price_cents:16000 ~participant:Harness.bob ()
+    in
+    let%bind () = rpc_submit alice alice_request in
+    let%bind () = rpc_submit bob bob_request in
+    let bob_coid = bob_request.client_order_id in
+    let%bind () = rpc_cancel bob bob_coid >>| Or_error.ok_exn in
+    return
+      [%expect
+        {|
+        [for Alice] ACCEPTED id=1 AAPL BUY 100@$150.00 DAY
+        [MD Subscriber] BBO AAPL bid=$150.00 x100 ask=-
+        [for Bob] ACCEPTED id=2 AAPL SELL 100@$160.00 DAY
+        [MD Subscriber] BBO AAPL bid=$150.00 x100 ask=$160.00 x100
+        [for Bob] CANCELLED id=2 AAPL client_order_id=15 remaining=100 reason=PARTICIPANT_REQUESTED
+        [MD Subscriber] BBO AAPL bid=$150.00 x100 ask=-
+        |}])
 ;;
 
 (* ---------------------------------------------------------------- *)
@@ -133,8 +280,8 @@ let%expect_test "e2e: market data subscriber receives trade and BBO updates" =
     [%expect
       {|
       [for Alice] ACCEPTED id=2 AAPL BUY 100@$150.00 DAY
-      [for Alice] FILL fill_id=1 AAPL $150.00 x100 aggressor=2(Alice) BUY resting=1(Bob)
-      [for Bob] FILL fill_id=1 AAPL $150.00 x100 aggressor=2(Alice) BUY resting=1(Bob)
+      [for Alice] FILL fill_id=1 AAPL $150.00 x100 aggressor=2(Alice) aggressor_coid=(17) BUY resting=1(Bob) resting_coid=(16)
+      [for Bob] FILL fill_id=1 AAPL $150.00 x100 aggressor=2(Alice) aggressor_coid=(17) BUY resting=1(Bob) resting_coid=(16)
       [MD Subscriber] TRADE AAPL $150.00 x100
       [MD Subscriber] BBO AAPL bid=- ask=-
       |}];
@@ -256,9 +403,9 @@ let%expect_test "e2e: audit log subscriber sees full unfiltered stream \
     in
     [%expect
       {|
-      [for Bob] ACCEPTED id=1 AAPL SELL 100@$150.00 DAY
       [AUDIT] ACCEPTED id=1 AAPL SELL 100@$150.00 DAY
       [AUDIT] BBO AAPL bid=- ask=$150.00 x100
+      [for Bob] ACCEPTED id=1 AAPL SELL 100@$150.00 DAY
       |}];
     (* Post a sell on TSLA — audit subscriber should see this too
        (multi-symbol). *)
@@ -273,21 +420,21 @@ let%expect_test "e2e: audit log subscriber sees full unfiltered stream \
     in
     [%expect
       {|
-      [for Bob] ACCEPTED id=2 TSLA SELL 100@$200.00 DAY
       [AUDIT] ACCEPTED id=2 TSLA SELL 100@$200.00 DAY
       [AUDIT] BBO TSLA bid=- ask=$200.00 x100
+      [for Bob] ACCEPTED id=2 TSLA SELL 100@$200.00 DAY
       |}];
     (* Cross the AAPL sell — the audit log should see ACCEPTED + FILL + BBO. *)
     let%bind () = rpc_submit alice (Harness.buy ~price_cents:15000 ()) in
     [%expect
       {|
-      [for Alice] ACCEPTED id=3 AAPL BUY 100@$150.00 DAY
-      [for Alice] FILL fill_id=1 AAPL $150.00 x100 aggressor=3(Alice) BUY resting=1(Bob)
-      [for Bob] FILL fill_id=1 AAPL $150.00 x100 aggressor=3(Alice) BUY resting=1(Bob)
       [AUDIT] ACCEPTED id=3 AAPL BUY 100@$150.00 DAY
-      [AUDIT] FILL fill_id=1 AAPL $150.00 x100 aggressor=3(Alice) BUY resting=1(Bob)
+      [AUDIT] FILL fill_id=1 AAPL $150.00 x100 aggressor=3(Alice) aggressor_coid=(37) BUY resting=1(Bob) resting_coid=(35)
       [AUDIT] TRADE AAPL $150.00 x100
       [AUDIT] BBO AAPL bid=- ask=-
+      [for Alice] ACCEPTED id=3 AAPL BUY 100@$150.00 DAY
+      [for Alice] FILL fill_id=1 AAPL $150.00 x100 aggressor=3(Alice) aggressor_coid=(37) BUY resting=1(Bob) resting_coid=(35)
+      [for Bob] FILL fill_id=1 AAPL $150.00 x100 aggressor=3(Alice) aggressor_coid=(37) BUY resting=1(Bob) resting_coid=(35)
       |}];
     return ())
 ;;
