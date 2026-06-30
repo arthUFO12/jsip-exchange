@@ -12,24 +12,7 @@ open! Core
 open! Async
 open Jsip_types
 
-(** Configuration for the market maker. *)
-module Config : sig
-  type t =
-    { participant : Participant.t
-    ; symbol : Symbol.t
-    ; fair_value_cents : int
-    (** The market maker's estimate of the true price, in cents. *)
-    ; half_spread_cents : int
-    (** Half-spread in cents. The bot will bid at [fair_value - half_spread]
-        and offer at [fair_value + half_spread]. *)
-    ; size_per_level : int (** Number of shares at each price level. *)
-    ; num_levels : int
-    (** Number of price levels on each side. The bot places orders at
-        [fair_value +/- spread], [fair_value +/- (spread + tick)], etc. *)
-    ; inventory_skew_cents_per_share : int
-    }
-  [@@deriving sexp_of]
-end
+
 
 (** Submit the market maker's initial set of resting orders over the given
     open [Rpc.Connection.t]. The connection must already be logged in as
@@ -37,10 +20,10 @@ end
     only returns success/failure of the submission attempt; the actual
     matching-engine response (acceptance, fills, rejection) arrives on the
     participant's session feed. *)
-val seed_book : ?fair_value_cents:int -> Config.t -> Rpc.Connection.t -> unit Deferred.t
+val seed_book : Market_maker_data.t -> Symbol.t -> int -> Rpc.Connection.t -> unit Deferred.t
 
-val run : Config.t -> Rpc.Connection.t -> unit Deferred.t
+val run : Market_maker_data.Config.t -> Rpc.Connection.t -> unit Deferred.t
 
 module For_testing : sig
-  val run : do_repost:bool -> Config.t -> Rpc.Connection.t -> unit Deferred.t
+  val run :  Market_maker_data.Config.t -> Rpc.Connection.t -> unit Deferred.t
 end

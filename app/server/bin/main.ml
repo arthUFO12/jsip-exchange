@@ -34,18 +34,23 @@ let connect_as ~where_to_connect participant =
 let seed_market_maker ~where_to_connect =
   let aapl = Symbol.of_string "AAPL" in
   let mm_participant = Participant.of_string "MarketMaker" in
-  let config : Market_maker.Config.t =
-    { participant = mm_participant
-    ; symbol = aapl
+  let symbol_config : Market_maker_data.SymbolConfig.t =
+    { symbol = aapl
     ; fair_value_cents = 15000
     ; half_spread_cents = 10
     ; size_per_level = 100
     ; num_levels = 5
     ; inventory_skew_cents_per_share = 10
+    } in
+  let config : Market_maker_data.Config.t = 
+    { participant = mm_participant
+    ; symbol_configs = [ symbol_config ]
+
     }
   in
   let%bind conn = connect_as ~where_to_connect mm_participant in
-  Market_maker.seed_book config conn
+  let mm_data = Market_maker_data.create config in
+  Market_maker.seed_book mm_data aapl symbol_config.fair_value_cents conn
 ;;
 
 (* Two market makers per symbol with offset fair values: MM_High's bids cross
@@ -71,15 +76,16 @@ let trade_back_and_forth ~where_to_connect =
   let low_offset_cents = -10 in
   let high_offset_cents = 15 in
   let cycle_period = Time_ns.Span.of_sec 2. in
-  let make ~participant ~symbol ~fair_value_cents : Market_maker.Config.t =
+  let make ~participant ~symbol ~fair_value_cents : Market_maker_data.Config.t =
     { participant
-    ; symbol
+    ; symbol_configs = [{
+     symbol
     ; fair_value_cents
     ; half_spread_cents = 5
     ; size_per_level = 25
     ; num_levels = 3
     ; inventory_skew_cents_per_share = 10
-    }
+    }]}
   in
   (* Two market makers total, each shared across all symbols — so we open
      exactly one logged-in connection per participant. *)
@@ -102,8 +108,8 @@ let trade_back_and_forth ~where_to_connect =
   in
   let configs = List.concat_map symbol_anchors ~f:configs_for_symbol in
   let cycle () =
-    Deferred.List.iter ~how:`Sequential configs ~f:(fun (conn, config) ->
-      Market_maker.seed_book config conn)
+    Deferred.List.iter ~how:`Sequential configs ~f:(fun (_conn, _config) ->
+      (*Market_maker.seed_book config conn*) Deferred.unit)
   in
   let%map () = cycle () in
   Clock_ns.every cycle_period (fun () -> don't_wait_for (cycle ()))
