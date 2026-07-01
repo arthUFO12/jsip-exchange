@@ -33,8 +33,6 @@ let make_recording_bot
   let (login_name : string option ref) = ref None in
   let submitted = ref [] in
   let cancelled = ref [] in
-  let login name =
-    login_name := Some name; Deferred.Or_error.return (Participant.of_string name) in
   let submit request =
     submitted := request :: !submitted;
     return (Ok ())
@@ -53,7 +51,6 @@ let make_recording_bot
       ~participant:alice
       ~oracle
       ~rng:(Splittable_random.of_int 7)
-      ~login
       ~submit
       ~cancel
       ~tick_interval:(Time_ns.Span.of_sec 1.0)

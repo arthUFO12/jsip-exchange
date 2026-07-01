@@ -12,7 +12,17 @@ open! Core
 open! Async
 open Jsip_types
 
+val update_market_maker_data
+  :  Market_maker_data.t
+  -> Exchange_event.t
+  -> unit
 
+val repost_after_fill
+  :  Market_maker_data.t
+  -> Exchange_event.t
+  -> (Order.Request.t -> unit Deferred.t)
+  -> (Client_order_id.t -> unit Deferred.t)
+  -> unit
 
 (** Submit the market maker's initial set of resting orders over the given
     open [Rpc.Connection.t]. The connection must already be logged in as
@@ -20,10 +30,15 @@ open Jsip_types
     only returns success/failure of the submission attempt; the actual
     matching-engine response (acceptance, fills, rejection) arrives on the
     participant's session feed. *)
-val seed_book : Market_maker_data.t -> Symbol.t -> int -> Rpc.Connection.t -> unit Deferred.t
+val seed_book
+  :  Market_maker_data.t
+  -> Symbol.t
+  -> int
+  -> (Order.Request.t -> unit Deferred.t)
+  -> unit Deferred.t
 
 val run : Market_maker_data.Config.t -> Rpc.Connection.t -> unit Deferred.t
 
 module For_testing : sig
-  val run :  Market_maker_data.Config.t -> Rpc.Connection.t -> unit Deferred.t
+  val run : Market_maker_data.Config.t -> Rpc.Connection.t -> unit Deferred.t
 end

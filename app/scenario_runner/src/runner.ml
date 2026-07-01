@@ -18,9 +18,16 @@ let start_bot ~where_to_connect ~oracle (Bot_spec.T spec) =
     >>| Result.map_error ~f:Error.of_exn
     >>| ok_exn
   in
-  let login name =
-    Rpc.Rpc.dispatch_exn Rpc_protocol.login_rpc connection name 
+  let%bind _ =
+    Rpc.Rpc.dispatch_exn
+      Rpc_protocol.login_rpc
+      connection
+      (Participant.to_string spec.participant)
   in
+  let%bind event_feed, _ =
+    Rpc.Pipe_rpc.dispatch_exn Rpc_protocol.session_feed_rpc connection ()
+  in
+  let feeds = ref [ event_feed ] in
   let submit request =
     Rpc.Rpc.dispatch_exn Rpc_protocol.submit_order_rpc connection request
   in
@@ -29,7 +36,7 @@ let start_bot ~where_to_connect ~oracle (Bot_spec.T spec) =
       (Or_error.error_s
          [%message
            "Scenario runner: cancel RPC not implemented yet"
-             (order_id : Order_id.t)])
+             (order_id : Client_order_id.t)])
   in
   let bot =
     Bot_runtime.create
@@ -38,7 +45,6 @@ let start_bot ~where_to_connect ~oracle (Bot_spec.T spec) =
       ~participant:spec.participant
       ~oracle
       ~rng:(Splittable_random.of_int spec.rng_seed)
-      ~login
       ~submit
       ~cancel
       ~tick_interval:spec.tick_interval
@@ -47,22 +53,21 @@ let start_bot ~where_to_connect ~oracle (Bot_spec.T spec) =
     match spec.is_marketdata_consumer with
     | false -> return ()
     | true ->
-      let%bind md_pipe, metadata =
+      let%bind md_pipe, _ =
         Rpc.Pipe_rpc.dispatch_exn
           Rpc_protocol.market_data_rpc
           connection
           spec.symbols
       in
-      don't_wait_for
-        (let%bind () = Pipe.iter md_pipe ~f:(Bot_runtime.feed_event bot) in
-         match%map Rpc.Pipe_rpc.close_reason metadata with
-         | Rpc.Pipe_close_reason.Closed_locally
-         | Rpc.Pipe_close_reason.Closed_remotely ->
-           ()
-         | Rpc.Pipe_close_reason.Error err ->
-           [%log.error "marketdata pipe closed with error" (err : Error.t)]);
+      feeds := md_pipe :: !feeds;
       return ()
   in
+  let interleaved_pipe = Pipe.interleave !feeds in
+  don't_wait_for
+    (let%bind () =
+       Pipe.iter interleaved_pipe ~f:(Bot_runtime.feed_event bot)
+     in
+     return ());
   print_endline
     [%string "[scenario] starting bot %{spec.participant#Participant}"];
   don't_wait_for (Bot_runtime.start bot);

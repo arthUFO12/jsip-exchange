@@ -45,12 +45,15 @@ let seed_market_maker ~where_to_connect =
   let config : Market_maker_data.Config.t = 
     { participant = mm_participant
     ; symbol_configs = [ symbol_config ]
-
+    ; mm_data = None
     }
   in
   let%bind conn = connect_as ~where_to_connect mm_participant in
   let mm_data = Market_maker_data.create config in
-  Market_maker.seed_book mm_data aapl symbol_config.fair_value_cents conn
+  let submit order = 
+    Rpc.Rpc.dispatch_exn Rpc_protocol.submit_order_rpc conn order >>| Or_error.ok_exn
+  in
+  Market_maker.seed_book mm_data aapl symbol_config.fair_value_cents submit
 ;;
 
 (* Two market makers per symbol with offset fair values: MM_High's bids cross
@@ -85,7 +88,8 @@ let trade_back_and_forth ~where_to_connect =
     ; size_per_level = 25
     ; num_levels = 3
     ; inventory_skew_cents_per_share = 10
-    }]}
+    }]
+    ; mm_data = None}
   in
   (* Two market makers total, each shared across all symbols — so we open
      exactly one logged-in connection per participant. *)

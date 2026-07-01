@@ -4,6 +4,7 @@ open! Core
 open! Async
 open Jsip_test_harness
 open Jsip_market_maker
+open Jsip_gateway
 open Jsip_types
 open E2e_helpers
 
@@ -20,7 +21,7 @@ let default_symbol_config : Market_maker_data.SymbolConfig.t =
 let default_config = 
   ({ participant = Participant.of_string "MarketMaker"
   ; symbol_configs = [ default_symbol_config ]
-
+  ; mm_data = None
   } : Market_maker_data.Config.t)
 
 let%expect_test "seed_book: places symmetric bids and asks around fair value"
@@ -28,7 +29,10 @@ let%expect_test "seed_book: places symmetric bids and asks around fair value"
   with_server ~symbols:[ Harness.aapl ] (fun ~server:_ ~port ->
     let%bind mm = connect_as ~port Harness.market_maker in
     let mm_data = Market_maker_data.create default_config in
-    let%bind () = Market_maker.seed_book mm_data default_symbol_config.symbol default_symbol_config.fair_value_cents (connection mm) in
+    let submit order = 
+      Rpc.Rpc.dispatch_exn Rpc_protocol.submit_order_rpc (connection mm) order >>| Or_error.ok_exn
+    in
+    let%bind () = Market_maker.seed_book mm_data default_symbol_config.symbol default_symbol_config.fair_value_cents submit in
     [%expect
       {|
       [for MarketMaker] ACCEPTED id=1 AAPL SELL 100@$150.10 DAY

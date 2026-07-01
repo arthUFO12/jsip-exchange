@@ -7,33 +7,15 @@ open Jsip_gateway
    is trading on *)
 
 (* helper for submitting order requests *)
-let submit conn request =
-  let%map result =
-    Rpc.Rpc.dispatch_exn Rpc_protocol.submit_order_rpc conn request
-  in
-  match result with
-  | Ok () -> ()
-  | Error msg ->
-    [%log.error
-      "market_maker: submit failed"
-        (request : Order.Request.t)
-        (msg : Error.t)]
-;;
 
 (* helper for submitting order cancels. We ignore errors here *)
-let cancel conn client_order_id =
-  let%map _ =
-    Rpc.Rpc.dispatch_exn Rpc_protocol.cancel_order_rpc conn client_order_id
-  in
-  ()
-;;
 
 (* Clears the book of all resting orders *)
-let clear_book (mm_data : Market_maker_data.t) symbol conn =
+let clear_book (mm_data : Market_maker_data.t) symbol cancel =
   let client_order_id_list =
     Market_maker_data.get_client_order_ids_list mm_data symbol
   in
-  Deferred.List.iter ~how:`Parallel client_order_id_list ~f:(cancel conn)
+  Deferred.List.iter ~how:`Parallel client_order_id_list ~f:cancel
 ;;
 
 (* computes the skewed fair value based on the config and current inventory *)
@@ -44,7 +26,7 @@ let compute_skewed_fair_cents mm_data symbol inventory =
 ;;
 
 (* seeds a one side of the book *)
-let seed_book_side mm_data symbol side fair_value_cents conn =
+let seed_book_side mm_data symbol side fair_value_cents submit =
   (* if we are buying, we offset prices downwards and away from the fair
      value, if we are selling we offset them upwards *)
   let config = Market_maker_data.get_config mm_data symbol in
@@ -59,7 +41,6 @@ let seed_book_side mm_data symbol side fair_value_cents conn =
       let offset = config.half_spread_cents + level in
       let%bind () =
         submit
-          conn
           ({ symbol = config.symbol
            ; participant = Market_maker_data.get_participant mm_data
            ; side
@@ -107,24 +88,24 @@ let update_market_maker_data
     ()
 ;;
 
-let repost_symbol mm_data conn symbol =
-  let _ = clear_book mm_data symbol conn in
+let repost_symbol mm_data submit cancel symbol =
+  let _ = clear_book mm_data symbol cancel in
   let fair_value_cents =
     Market_maker_data.compute_effective_inventory mm_data symbol
     |> compute_skewed_fair_cents mm_data symbol
   in
-  let _ = seed_book mm_data symbol fair_value_cents conn in
+  let _ = seed_book mm_data symbol fair_value_cents submit in
   ()
 ;;
 
 (* clears book and reposts orders based on new inventory *)
-let repost_after_fill mm_data conn event =
+let repost_after_fill mm_data event submit cancel =
   match (event : Exchange_event.t) with
   | Fill f ->
     let correlated_symbols =
       Market_maker_data.get_correlated_symbols mm_data f.symbol
     in
-    List.iter correlated_symbols ~f:(repost_symbol mm_data conn)
+    List.iter correlated_symbols ~f:(repost_symbol mm_data submit cancel)
   | _ -> ()
 ;;
 
@@ -135,6 +116,24 @@ let run'
   (config : Market_maker_data.Config.t)
   (conn : Rpc.Connection.t)
   =
+  let submit request =
+    let%map result =
+      Rpc.Rpc.dispatch_exn Rpc_protocol.submit_order_rpc conn request
+    in
+    match result with
+    | Ok () -> ()
+    | Error msg ->
+      [%log.error
+        "market_maker: submit failed"
+          (request : Order.Request.t)
+          (msg : Error.t)]
+  in
+  let cancel client_order_id =
+    let%map _ =
+      Rpc.Rpc.dispatch_exn Rpc_protocol.cancel_order_rpc conn client_order_id
+    in
+    ()
+  in
   let%bind _ =
     Rpc.Rpc.dispatch_exn
       Rpc_protocol.login_rpc
@@ -149,7 +148,7 @@ let run'
   don't_wait_for
     (Pipe.iter_without_pushback session_feed ~f:(fun event ->
        update_market_maker_data mm_data event;
-       repost_after_fill mm_data conn event;
+       repost_after_fill mm_data event submit cancel;
        if testing
        then (
          let e = Protocol.format_event event in
@@ -158,7 +157,7 @@ let run'
   let symbol_list = Market_maker_data.get_symbol_list mm_data in
   Deferred.List.iter symbol_list ~how:`Parallel ~f:(fun symbol ->
     let cfg = Market_maker_data.get_config mm_data symbol in
-    seed_book mm_data symbol cfg.fair_value_cents conn)
+    seed_book mm_data symbol cfg.fair_value_cents submit)
 ;;
 
 let run config conn = run' ~testing:false config conn

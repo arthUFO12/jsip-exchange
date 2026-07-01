@@ -10,8 +10,7 @@ module Context = struct
     ; oracle : Fundamental_oracle.t
     ; rng : Splittable_random.t
     ; dispatch_submit : Order.Request.t -> unit Deferred.Or_error.t
-    ; dispatch_cancel : Order_id.t -> unit Deferred.Or_error.t
-    ; dispatch_login : string -> Participant.t Deferred.Or_error.t
+    ; dispatch_cancel : Client_order_id.t -> unit Deferred.Or_error.t
     }
 
   let participant t = t.participant
@@ -58,7 +57,6 @@ let create
   ~participant
   ~oracle
   ~rng
-  ~login
   ~submit
   ~cancel
   ~tick_interval
@@ -67,7 +65,6 @@ let create
     { participant
     ; oracle
     ; rng
-    ; dispatch_login = login
     ; dispatch_submit = submit
     ; dispatch_cancel = cancel
     }

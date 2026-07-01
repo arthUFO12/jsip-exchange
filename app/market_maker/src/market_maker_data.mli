@@ -4,7 +4,7 @@ open Jsip_types
 module SymbolConfig : sig
   type t =
     { symbol : Symbol.t
-    ; fair_value_cents : int
+    ; mutable fair_value_cents : int
     ; half_spread_cents : int
     ; size_per_level : int
     ; num_levels : int
@@ -12,17 +12,18 @@ module SymbolConfig : sig
     }
   [@@deriving sexp_of]
 end
-(** Configuration for the market maker. *)
-module Config : sig
-  type t =
-    { participant : Participant.t
-    ; symbol_configs : SymbolConfig.t list
-    }
-  [@@deriving sexp_of]
-end
+
 
 type t
-
+(** Configuration for the market maker. *)
+module Config : sig
+  type cfg =
+    { mutable participant : Participant.t
+    ; mutable symbol_configs : SymbolConfig.t list
+    ; mutable mm_data : t option
+    }
+  type t = cfg
+end
 
 val get_config : t -> Symbol.t -> SymbolConfig.t 
 

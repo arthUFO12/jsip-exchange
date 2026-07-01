@@ -5,7 +5,7 @@ open Jsip_types
 module SymbolConfig = struct
   type t =
     { symbol : Symbol.t
-    ; fair_value_cents : int
+    ; mutable fair_value_cents : int
     ; half_spread_cents : int
     ; size_per_level : int
     ; num_levels : int
@@ -14,16 +14,7 @@ module SymbolConfig = struct
   [@@deriving sexp_of]
 end
 
-(* Configuration for the market maker. *)
-module Config = struct
-  type t =
-    { participant : Participant.t
-    ; symbol_configs : SymbolConfig.t list
-    }
-  [@@deriving sexp_of]
 
-  let get_symbols t = List.map t.symbol_configs ~f:(fun cfg -> cfg.symbol)
-end
 
 module Correlation = struct
   type t = float [@@deriving sexp, compare, equal]
@@ -61,6 +52,20 @@ type t =
   ; correlation_matrix : Correlation.t array array
   ; symbol_array : Symbol.t array
   }
+  (* Configuration for the market maker. *)
+module Config = struct
+  type cfg =
+    { mutable participant : Participant.t
+    ; mutable symbol_configs : SymbolConfig.t list
+    ; mutable mm_data : t option
+    }
+
+  type t = cfg
+
+  
+  let get_symbols t = List.map t.symbol_configs ~f:(fun cfg -> cfg.symbol)
+end
+
 
 let create (config : Config.t) =
   let symbol_configs = config.symbol_configs in
