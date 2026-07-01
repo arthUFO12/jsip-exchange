@@ -1,6 +1,0 @@
-(library
- (name pnl)
- (public_name jsip-exchange.pnl)
- (libraries core jsip_types)
- (preprocess
-  (pps ppx_jane)))
