@@ -27,7 +27,6 @@
 open! Core
 open Jsip_types
 
-
 (** Format an exchange event as a single line of human-readable text. *)
 val format_event : Exchange_event.t -> string
 

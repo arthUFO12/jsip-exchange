@@ -83,8 +83,7 @@ let engine_with_n_asks ?(min_price = 10_000) n =
          ; size = Size.of_int 100
          ; time_in_force = Day
          ; client_order_id = Client_order_id.create ()
-         }
-       )
+         })
   done;
   engine
 ;;
@@ -189,7 +188,7 @@ let bench_submit_ioc_cross ~n =
            ; client_order_id = Client_order_id.create ()
            }
        in
-       ignore (events);
+       ignore events;
        (* Re-seed: add back a resting sell to replace the one we consumed *)
        ignore
          (Matching_engine.submit
@@ -201,8 +200,7 @@ let bench_submit_ioc_cross ~n =
             ; size = Size.of_int 100
             ; time_in_force = Day
             ; client_order_id = Client_order_id.create ()
-            }
-          );
+            });
        next_price := !next_price + 1;
        if !next_price > max_price then next_price := min_price + 1)
 ;;
@@ -221,8 +219,7 @@ let bench_submit_ioc_no_match ~n =
          ; size = Size.of_int 100
          ; time_in_force = Ioc
          ; client_order_id = Client_order_id.create ()
-         }
-      ))
+         }))
 ;;
 
 let bench_submit_sweep ~n =
@@ -241,8 +238,7 @@ let bench_submit_sweep ~n =
          ; size = Size.of_int (n * 100)
          ; time_in_force = Ioc
          ; client_order_id = Client_order_id.create ()
-         }
-       );
+         });
     (* Re-seed entire book *)
     engine := engine_with_n_asks n)
 ;;

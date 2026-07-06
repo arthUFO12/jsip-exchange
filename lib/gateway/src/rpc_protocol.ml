@@ -30,31 +30,34 @@ let market_data_rpc =
     ()
 ;;
 
-let login_rpc = 
+let login_rpc =
   Rpc.Rpc.create
     ~name:"login"
     ~version:1
-    ~bin_query: String.bin_t
-    ~include_in_error_count: Only_on_exn
-    ~bin_response: [%bin_type_class: Participant.t Or_error.t]
-
+    ~bin_query:String.bin_t
+    ~include_in_error_count:Only_on_exn
+    ~bin_response:[%bin_type_class: Participant.t Or_error.t]
+;;
 
 let session_feed_rpc =
-  Rpc.Pipe_rpc.create 
-  ~name:"session-feed"
-  ~version:1
-  ~bin_query: Unit.bin_t
-  ~bin_response: Exchange_event.bin_t
-  ~bin_error: Error.bin_t
-  ()
+  Rpc.Pipe_rpc.create
+    ~name:"session-feed"
+    ~version:1
+    ~bin_query:Unit.bin_t
+    ~bin_response:Exchange_event.bin_t
+    ~bin_error:Error.bin_t
+    ()
+;;
 
 let cancel_order_rpc =
   Rpc.Rpc.create
-  ~name:"cancel-order"
-  ~version:1
-  ~include_in_error_count: Only_on_exn
-  ~bin_query: Client_order_id.bin_t
-  ~bin_response: [%bin_type_class: unit Or_error.t]
+    ~name:"cancel-order"
+    ~version:1
+    ~include_in_error_count:Only_on_exn
+    ~bin_query:Client_order_id.bin_t
+    ~bin_response:[%bin_type_class: unit Or_error.t]
+;;
+
 let audit_log_rpc =
   Rpc.Pipe_rpc.create
     ~name:"audit-log"

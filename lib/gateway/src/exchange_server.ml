@@ -43,7 +43,8 @@ let handle_submit ~request_writer ~dispatcher (request : Order.Request.t) =
        Dispatcher.dispatch
          dispatcher
          [ Exchange_event.Order_reject
-             { request = sanitized_request
+             { participant = sanitized_request.participant
+             ; request = sanitized_request
              ; reason = "duplicate client order id"
              }
          ];

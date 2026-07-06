@@ -48,8 +48,10 @@ val size : t -> Size.t
 val remaining_size : t -> Size.t
 val time_in_force : t -> Time_in_force.t
 val better_price_time : Side.t -> ord1:t -> ord2:t -> bool
-val price_time_cmp : Side.t -> t -> t -> int (* Doesn't have named arguments due to need for compatibility with List.sort *)
-val client_order_id :  t -> Client_order_id.t
+val price_time_cmp : Side.t -> t -> t -> int
+(* Doesn't have named arguments due to need for compatibility with List.sort *)
+
+val client_order_id : t -> Client_order_id.t
 
 (** {2 Mutation}
 

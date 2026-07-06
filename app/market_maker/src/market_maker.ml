@@ -74,7 +74,7 @@ let update_market_maker_data
   match (event : Exchange_event.t) with
   (* In the order accept case we just add the order to our list of resting
      COIDs *)
-  | Exchange_event.Order_accept { order_id = _; request } ->
+  | Exchange_event.Order_accept { order_id = _; request; _ } ->
     Market_maker_data.add_request market_maker_data request
   (* In the fill case we *)
   | Fill fill -> Market_maker_data.apply_fill market_maker_data fill

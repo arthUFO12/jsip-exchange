@@ -1,12 +1,13 @@
 open! Core
 
-(* make a mini module that has all the things that Comparable.Make needs*)
+(* make a mini module that has all the things that Comparable.Make needs *)
 module T = struct
   type t = int [@@deriving sexp, bin_io, compare, equal, hash]
 end
 
 include T
 include Comparable.Make (T)
+
 (* functor : function from module to module *)
 let cents_per_dollar = 100
 let of_int_cents n = n

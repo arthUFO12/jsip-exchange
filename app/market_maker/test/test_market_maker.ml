@@ -18,21 +18,33 @@ let default_symbol_config : Market_maker_data.SymbolConfig.t =
   }
 ;;
 
-let default_config = 
+let default_config =
   ({ participant = Participant.of_string "MarketMaker"
-  ; symbol_configs = [ default_symbol_config ]
-  ; mm_data = None
-  } : Market_maker_data.Config.t)
+   ; symbol_configs = [ default_symbol_config ]
+   ; mm_data = None
+   }
+   : Market_maker_data.Config.t)
+;;
 
 let%expect_test "seed_book: places symmetric bids and asks around fair value"
   =
   with_server ~symbols:[ Harness.aapl ] (fun ~server:_ ~port ->
     let%bind mm = connect_as ~port Harness.market_maker in
     let mm_data = Market_maker_data.create default_config in
-    let submit order = 
-      Rpc.Rpc.dispatch_exn Rpc_protocol.submit_order_rpc (connection mm) order >>| Or_error.ok_exn
+    let submit order =
+      Rpc.Rpc.dispatch_exn
+        Rpc_protocol.submit_order_rpc
+        (connection mm)
+        order
+      >>| Or_error.ok_exn
     in
-    let%bind () = Market_maker.seed_book mm_data default_symbol_config.symbol default_symbol_config.fair_value_cents submit in
+    let%bind () =
+      Market_maker.seed_book
+        mm_data
+        default_symbol_config.symbol
+        default_symbol_config.fair_value_cents
+        submit
+    in
     [%expect
       {|
       [for MarketMaker] ACCEPTED id=1 AAPL SELL 100@$150.10 DAY
@@ -50,9 +62,7 @@ let%expect_test "run: does things" =
     let%bind alice = connect_as_no_sub ~port Harness.alice in
     let%bind mm = connect_as_no_login ~port Harness.market_maker in
     let%bind () =
-      Market_maker.For_testing.run
-        default_config
-        (connection mm)
+      Market_maker.For_testing.run default_config (connection mm)
     in
     let%bind () =
       rpc_submit alice (Harness.sell ~size:50 ~price_cents:14990 ())
@@ -226,16 +236,14 @@ let%expect_test "run: reposts after receiving a fill event" =
     let%bind alice = connect_as_no_sub ~port Harness.alice in
     let%bind mm = connect_as_no_login ~port Harness.market_maker in
     let%bind () =
-      Market_maker.For_testing.run
-        default_config
-        (connection mm)
+      Market_maker.For_testing.run default_config (connection mm)
     in
     let%bind () =
       rpc_submit alice (Harness.sell ~size:50 ~price_cents:14990 ())
     in
     let%bind () = Clock_ns.after (Time_ns.Span.of_sec 10.0) in
-    
-    [%expect {|
+    [%expect
+      {|
       ACCEPTED id=1 AAPL SELL 100@$150.10 DAY
 
       symbol: AAPL inventory_size: 0

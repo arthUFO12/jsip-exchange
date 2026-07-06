@@ -1,6 +1,5 @@
 open! Core
 
-
 type t =
   { side : Side.t
   ; mutable price_levels : Order.t Queue.t Price.Map.t
@@ -45,8 +44,7 @@ let remove t order_id =
       else (
         let equal_func x = Order_id.equal (Order.order_id x) order_id in
         let found_order = Queue.find price_queue ~f:equal_func in
-        Queue.filter_inplace price_queue ~f:(fun ele ->
-          not (equal_func ele));
+        Queue.filter_inplace price_queue ~f:(fun ele -> not (equal_func ele));
         found_order)
     in
     Hashtbl.remove t.id_to_price order_id;
@@ -56,9 +54,7 @@ let remove t order_id =
 
 let create side =
   let map = Price.Map.empty in
-  let id_to_price =
-    Hashtbl.create ~growth_allowed:true (module Order_id)
-  in
+  let id_to_price = Hashtbl.create ~growth_allowed:true (module Order_id) in
   { side; price_levels = map; id_to_price }
 ;;
 
@@ -76,8 +72,8 @@ let list_out t =
   Map.iter t.price_levels ~f:(fun q ->
     list
     := match (t.side : Side.t) with
-        | Buy -> Queue.to_list q @ !list
-        | Sell -> !list @ Queue.to_list q);
+       | Buy -> Queue.to_list q @ !list
+       | Sell -> !list @ Queue.to_list q);
   !list
 ;;
 
@@ -101,12 +97,12 @@ let find_best_price_time_match t price buy_or_sell =
   match (buy_or_sell : Side.t) with
   | Buy ->
     (match Map.min_elt t.price_levels with
-      | None -> None
-      | Some (key, queue) when Price.( <= ) key price -> Queue.peek queue
-      | Some _ -> None)
+     | None -> None
+     | Some (key, queue) when Price.( <= ) key price -> Queue.peek queue
+     | Some _ -> None)
   | Sell ->
     (match Map.max_elt t.price_levels with
-      | None -> None
-      | Some (key, queue) when Price.( >= ) key price -> Queue.peek queue
-      | Some _ -> None)
+     | None -> None
+     | Some (key, queue) when Price.( >= ) key price -> Queue.peek queue
+     | Some _ -> None)
 ;;

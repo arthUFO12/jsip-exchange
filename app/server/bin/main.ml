@@ -27,7 +27,12 @@ let connect_as ~where_to_connect participant =
      we just open the TCP connection. *)
   ignore participant;
   let%bind conn = Rpc.Connection.client where_to_connect >>| Result.ok_exn in
-  let%bind _ = Rpc.Rpc.dispatch_exn Rpc_protocol.login_rpc conn (Participant.to_string participant) in
+  let%bind _ =
+    Rpc.Rpc.dispatch_exn
+      Rpc_protocol.login_rpc
+      conn
+      (Participant.to_string participant)
+  in
   return conn
 ;;
 
@@ -41,8 +46,9 @@ let seed_market_maker ~where_to_connect =
     ; size_per_level = 100
     ; num_levels = 5
     ; inventory_skew_cents_per_share = 10
-    } in
-  let config : Market_maker_data.Config.t = 
+    }
+  in
+  let config : Market_maker_data.Config.t =
     { participant = mm_participant
     ; symbol_configs = [ symbol_config ]
     ; mm_data = None
@@ -50,8 +56,9 @@ let seed_market_maker ~where_to_connect =
   in
   let%bind conn = connect_as ~where_to_connect mm_participant in
   let mm_data = Market_maker_data.create config in
-  let submit order = 
-    Rpc.Rpc.dispatch_exn Rpc_protocol.submit_order_rpc conn order >>| Or_error.ok_exn
+  let submit order =
+    Rpc.Rpc.dispatch_exn Rpc_protocol.submit_order_rpc conn order
+    >>| Or_error.ok_exn
   in
   Market_maker.seed_book mm_data aapl symbol_config.fair_value_cents submit
 ;;
@@ -79,17 +86,21 @@ let trade_back_and_forth ~where_to_connect =
   let low_offset_cents = -10 in
   let high_offset_cents = 15 in
   let cycle_period = Time_ns.Span.of_sec 2. in
-  let make ~participant ~symbol ~fair_value_cents : Market_maker_data.Config.t =
+  let make ~participant ~symbol ~fair_value_cents
+    : Market_maker_data.Config.t
+    =
     { participant
-    ; symbol_configs = [{
-     symbol
-    ; fair_value_cents
-    ; half_spread_cents = 5
-    ; size_per_level = 25
-    ; num_levels = 3
-    ; inventory_skew_cents_per_share = 10
-    }]
-    ; mm_data = None}
+    ; symbol_configs =
+        [ { symbol
+          ; fair_value_cents
+          ; half_spread_cents = 5
+          ; size_per_level = 25
+          ; num_levels = 3
+          ; inventory_skew_cents_per_share = 10
+          }
+        ]
+    ; mm_data = None
+    }
   in
   (* Two market makers total, each shared across all symbols — so we open
      exactly one logged-in connection per participant. *)
@@ -113,7 +124,7 @@ let trade_back_and_forth ~where_to_connect =
   let configs = List.concat_map symbol_anchors ~f:configs_for_symbol in
   let cycle () =
     Deferred.List.iter ~how:`Sequential configs ~f:(fun (_conn, _config) ->
-      (*Market_maker.seed_book config conn*) Deferred.unit)
+      (* Market_maker.seed_book config conn *) Deferred.unit)
   in
   let%map () = cycle () in
   Clock_ns.every cycle_period (fun () -> don't_wait_for (cycle ()))

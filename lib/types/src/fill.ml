@@ -31,7 +31,8 @@ let to_string
     t)
   =
   sprintf
-    "fill_id=%d %s %s x%d aggressor=%s(%s) aggressor_coid=(%s) %s resting=%s(%s) resting_coid=(%s)"
+    "fill_id=%d %s %s x%d aggressor=%s(%s) aggressor_coid=(%s) %s \
+     resting=%s(%s) resting_coid=(%s)"
     fill_id
     (Symbol.to_string symbol)
     (Price.to_string_dollar price)
@@ -47,5 +48,7 @@ let to_string
 
 let notional_cents t = Price.to_int_cents t.price * Size.to_int t.size
 
-let to_participant_view t = 
-  [%string "You bought %{t.size#Size} %{t.symbol#Symbol} at %{t.price#Price}"]
+let to_participant_view t =
+  [%string
+    "You bought %{t.size#Size} %{t.symbol#Symbol} at %{t.price#Price}"]
+;;

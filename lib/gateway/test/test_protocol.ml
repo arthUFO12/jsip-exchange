@@ -9,6 +9,7 @@ let%expect_test "format_event: all event types" =
   let events =
     [ Exchange_event.Order_accept
         { order_id = Order_id.of_string "1"
+        ; participant = Participant.of_string "Alice"
         ; request =
             { symbol = Symbol.of_string "AAPL"
             ; participant = Participant.of_string "Alice"
@@ -41,7 +42,8 @@ let%expect_test "format_event: all event types" =
         ; client_order_id = Client_order_id.of_string "3"
         }
     ; Order_reject
-        { request =
+        { participant = Participant.of_string "Alice"
+        ; request =
             { symbol = Symbol.of_string "GOOG"
             ; participant = Participant.of_string "Alice"
             ; side = Sell
@@ -100,7 +102,8 @@ let%expect_test "round-trip: parse a command, submit, format result" =
     (Harness.sell ~price_cents:15000 ~participant:Harness.bob ());
   (* Parse a buy command from text and submit it *)
   let request =
-    Exchange_command.parse ~participant:Harness.alice "BUY 1 AAPL 100 150.00" |> ok_exn
+    Exchange_command.parse ~participant:Harness.alice "BUY 1 AAPL 100 150.00"
+    |> ok_exn
   in
   match (request : Exchange_command.t) with
   | Book _ -> print_endline "Error"
@@ -119,4 +122,3 @@ let%expect_test "round-trip: parse a command, submit, format result" =
       BBO AAPL bid=- ask=-
       |}]
 ;;
-

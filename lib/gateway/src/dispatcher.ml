@@ -5,7 +5,7 @@ open Jsip_types
 module Session_data = struct
   type t =
     { session : Session.t
-    ; coid_to_orders : (Order.t option) Client_order_id.Table.t
+    ; coid_to_orders : Order.t option Client_order_id.Table.t
     }
 end
 
@@ -106,9 +106,9 @@ let push_to_session t participant event =
   (* TODO: Once sessions have been implemented this function should write the
      event to the appropriate session's pipe. For now we have the server
      binary print these events to stdout while tests can silence them. *)
-  match Hashtbl.find t.sessions_data participant with 
-    | None -> ()
-    | Some session_data -> Session.push session_data.session event;
+  match Hashtbl.find t.sessions_data participant with
+  | None -> ()
+  | Some session_data -> Session.push session_data.session event
 ;;
 
 let dispatch_event t (event : Exchange_event.t) =
@@ -118,9 +118,9 @@ let dispatch_event t (event : Exchange_event.t) =
     push_market_data t event symbol
   | Trade_report { symbol; price = _; size = _ } ->
     push_market_data t event symbol
-  | Order_accept { order_id = _; request }
-  | Order_reject { request; reason = _ } ->
-    push_to_session t request.participant event
+  | Order_accept { order_id = _; participant; request = _ }
+  | Order_reject { participant; request = _; reason = _ } ->
+    push_to_session t participant event
   | Order_cancel
       { order_id = _
       ; participant
@@ -145,12 +145,8 @@ let dispatch_event t (event : Exchange_event.t) =
       } ->
     push_to_session t aggressor_participant event;
     push_to_session t resting_participant event
-    | Cancel_reject {
-      participant
-      ; client_order_id = _
-      ; reason = _
-    } ->
-      push_to_session t participant event
+  | Cancel_reject { participant; client_order_id = _; reason = _ } ->
+    push_to_session t participant event
 ;;
 
 let dispatch t events = List.iter events ~f:(dispatch_event t)
@@ -164,16 +160,27 @@ let register_coid_to_participant t ~participant ~client_order_id =
   match Hashtbl.mem session_data.coid_to_orders client_order_id with
   | true -> false
   | false ->
-    ignore (Hashtbl.add session_data.coid_to_orders ~key:client_order_id ~data:None);
+    ignore
+      (Hashtbl.add
+         session_data.coid_to_orders
+         ~key:client_order_id
+         ~data:None);
     true
 ;;
 
-let register_order_to_coid_participant_pair t ~participant ~client_order_id ~order =
-  let sessions_data = (Hashtbl.find_exn t.sessions_data participant) in 
-  Hashtbl.update sessions_data.coid_to_orders client_order_id ~f:(function 
-  | None -> None 
-  | Some _ -> Some order)
+let register_order_to_coid_participant_pair
+  t
+  ~participant
+  ~client_order_id
+  ~order
+  =
+  let sessions_data = Hashtbl.find_exn t.sessions_data participant in
+  Hashtbl.update sessions_data.coid_to_orders client_order_id ~f:(function
+    | None -> None
+    | Some _ -> Some order)
+;;
 
 let get_order t ~participant ~client_order_id =
   let session_data = Hashtbl.find_exn t.sessions_data participant in
   Hashtbl.find session_data.coid_to_orders client_order_id |> Option.join
+;;

@@ -2,10 +2,14 @@ open! Core
 open Jsip_types
 open Jsip_gateway
 
-
 let test_participant = Participant.of_string "anonymous"
+
 let print_parse line =
-  match Or_error.join (Or_error.try_with (fun () -> Exchange_command.parse ~participant:test_participant line)) with
+  match
+    Or_error.join
+      (Or_error.try_with (fun () ->
+         Exchange_command.parse ~participant:test_participant line))
+  with
   | Error msg -> print_endline [%string "ERROR: %{Error.to_string_hum msg}"]
   | Ok comm -> print_endline [%string "%{comm#Exchange_command}"]
 ;;
@@ -19,8 +23,6 @@ let submit_or_error comm =
      | _ -> Or_error.error_string "Wrong type")
 ;;
 
-
-
 (* --- Successful parsing --- *)
 
 let%expect_test "parse: basic buy" =
@@ -33,17 +35,20 @@ let%expect_test "parse: basic sell" =
   [%expect {| SELL TSLA 50@$200.00 DAY as anonymous (id: 1) |}]
 ;;
 
-let%expect_test "parse: basic cancel" = 
+let%expect_test "parse: basic cancel" =
   print_parse "CANCEL 1";
   [%expect {| 1 |}]
+;;
 
 let%expect_test "parse: basic book" =
   print_parse "BOOK AAPL";
   [%expect {| AAPL |}]
+;;
 
 let%expect_test "parse: basic subscribe" =
   print_parse "SUBSCRIBE AAPL";
   [%expect {| AAPL |}]
+;;
 
 let%expect_test "parse: case insensitive side" =
   print_parse "buy 1 AAPL 100 150.00";
@@ -64,7 +69,6 @@ let%expect_test "parse: with explicit DAY" =
   print_parse "SELL 1 AAPL 200 151.00 DAY";
   [%expect {| SELL AAPL 200@$151.00 DAY as anonymous (id: 1) |}]
 ;;
-
 
 let%expect_test "parse: with TIF" =
   print_parse "SELL 1 GOOG 75 2800.50 IOC";
@@ -99,7 +103,8 @@ let%expect_test "parse error: empty string" =
 
 let%expect_test "parse error: unknown command" =
   print_parse "HOLD 1 AAPL 100 150.00";
-  [%expect {| ERROR: ("Exchange_command.Verb.of_string: invalid string" (value HOLD)) |}]
+  [%expect
+    {| ERROR: ("Exchange_command.Verb.of_string: invalid string" (value HOLD)) |}]
 ;;
 
 let%expect_test "parse error: missing fields" =
@@ -126,15 +131,15 @@ let%expect_test "parse error: invalid size" =
 
 let%expect_test "parse error: invalid price" =
   print_parse "BUY 1 AAPL 100 xyz";
-  [%expect
-    {|
+  [%expect {|
     ERROR: (Invalid_argument "Float.of_string xyz")
     |}]
 ;;
 
 let%expect_test "parse error: unknown time-in-force" =
   print_parse "BUY 1 AAPL 100 150.00 QQQ";
-  [%expect {| ERROR: ("Time_in_force.of_string: invalid string" (value QQQ)) |}]
+  [%expect
+    {| ERROR: ("Time_in_force.of_string: invalid string" (value QQQ)) |}]
 ;;
 
 (* --- parse_command_with_default_participant --- *)
@@ -149,4 +154,3 @@ let%expect_test "default participant: used when none specified" =
   print_endline [%string "participant=%{req.participant#Participant}"];
   [%expect {| participant=DefaultTrader |}]
 ;;
-

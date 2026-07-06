@@ -1,7 +1,6 @@
 open! Core
 open! Async
 open Jsip_types
-
 module Fundamental_oracle = Jsip_fundamental.Fundamental_oracle
 
 module Context = struct

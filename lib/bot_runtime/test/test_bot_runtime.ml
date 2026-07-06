@@ -86,6 +86,7 @@ let fill_event : Exchange_event.t =
 let accepted_event : Exchange_event.t =
   Order_accept
     { order_id = Order_id.For_testing.of_int 1
+    ; participant = alice
     ; request =
         { symbol = aapl
         ; participant = alice
@@ -122,7 +123,7 @@ let%expect_test "feed_event forwards every event verbatim to on_event" =
        (aggressor_participant Alice) (aggressor_client_order_id 2)
        (aggressor_side Buy) (resting_order_id 2) (resting_participant Bob)
        (resting_client_order_id 1)))
-     (Order_accept (order_id 1)
+     (Order_accept (order_id 1) (participant Alice)
       (request
        ((symbol AAPL) (participant Alice) (side Buy) (price 15000) (size 10)
         (time_in_force Day) (client_order_id 3)))))

@@ -36,12 +36,12 @@ let handle_book_or_subscribe
   | _, [] -> Or_error.error_string "No ticker provided"
 ;;
 
-let handle_cancel (rest_of_line: string list) : t Or_error.t =
-  match rest_of_line with 
-    | coid_str :: _ -> (Cancel (Client_order_id.of_string coid_str)) |> Ok
-    | [] -> Or_error.error_string "no client order id given"
+let handle_cancel (rest_of_line : string list) : t Or_error.t =
+  match rest_of_line with
+  | coid_str :: _ -> Cancel (Client_order_id.of_string coid_str) |> Ok
+  | [] -> Or_error.error_string "no client order id given"
+;;
 
-    
 let handle_buy_or_sell
   (buy_or_sell : Verb.t)
   (rest_of_line : string list)
@@ -55,12 +55,20 @@ let handle_buy_or_sell
     (match rest_of_line with
      (* for SELL and BUY, command should have
         [ verb symbol size price time_in_force optional<participant> ] *)
-     | client_order_id_str :: symbol_str :: size_str :: price_str :: maybe_tif ->
+     | client_order_id_str
+       :: symbol_str
+       :: size_str
+       :: price_str
+       :: maybe_tif ->
        let client_order_id = Client_order_id.of_string client_order_id_str in
        let size = Size.of_string size_str in
        let symbol = Symbol.of_string symbol_str in
        let price = Price.of_string price_str in
-       let time_in_force = match maybe_tif with [] -> Time_in_force.Day | tif_str :: _ -> Time_in_force.of_string tif_str in
+       let time_in_force =
+         match maybe_tif with
+         | [] -> Time_in_force.Day
+         | tif_str :: _ -> Time_in_force.of_string tif_str
+       in
        Ok
          (Submit
             { side =
@@ -71,11 +79,13 @@ let handle_buy_or_sell
             ; size
             ; price
             ; time_in_force
-            ; participant = participant
+            ; participant
             ; symbol
-            ; client_order_id = client_order_id
+            ; client_order_id
             })
-     | _ -> Or_error.error_string "expected: BUY|SELL <coid> <symbol> <size> <price> [DAY|IOC]")
+     | _ ->
+       Or_error.error_string
+         "expected: BUY|SELL <coid> <symbol> <size> <price> [DAY|IOC]")
 ;;
 
 (* parse_exn: Sole function for parsing commands sent to the exchange. Can
@@ -84,7 +94,11 @@ let handle_buy_or_sell
    describing the string command sent to the exchange *)
 
 let parse ~participant command_string : t Or_error.t =
-  match String.split command_string ~on:' ' |> List.map ~f:String.strip |> List.filter ~f:(fun str -> not (String.is_empty str)) with
+  match
+    String.split command_string ~on:' '
+    |> List.map ~f:String.strip
+    |> List.filter ~f:(fun str -> not (String.is_empty str))
+  with
   | [] -> Or_error.error_string "empty command"
   | first_word :: rest ->
     let verb = Verb.of_string first_word in
@@ -95,7 +109,8 @@ let parse ~participant command_string : t Or_error.t =
        handle_book_or_subscribe book_or_sub rest
        (* in the BOOK case, we just return a Book.t variant of the exchange
           command with the ticker *)
-     | (Buy | Sell) as buy_or_sell -> handle_buy_or_sell buy_or_sell rest ~participant
+     | (Buy | Sell) as buy_or_sell ->
+       handle_buy_or_sell buy_or_sell rest ~participant
      | Cancel -> handle_cancel rest)
 ;;
 

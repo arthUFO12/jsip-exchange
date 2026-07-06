@@ -65,7 +65,6 @@ let rec match_loop ~book ~order ~fill_id =
 
 let cancel t (order : Order.t) =
   let book = Map.find t.books (Order.symbol order) in
-  
   match book with
   | None -> Or_error.error_string "symbol not listed"
   | Some book ->
@@ -86,12 +85,19 @@ let submit t (request : Order.Request.t) =
   match Map.find t.books request.symbol with
   | None ->
     ( None
-    , [ Exchange_event.Order_reject { request; reason = "unknown symbol" } ]
-    )
+    , [ Exchange_event.Order_reject
+          { participant = request.participant
+          ; request
+          ; reason = "unknown symbol"
+          }
+      ] )
   | Some book ->
     let order_id = Order_id.Generator.next t.order_id_gen in
     let order = Order.create request ~order_id in
-    let accepted = Exchange_event.Order_accept { order_id; request } in
+    let accepted =
+      Exchange_event.Order_accept
+        { order_id; participant = request.participant; request }
+    in
     (* Snapshot BBO before matching so we can detect changes. *)
     let bbo_before = Order_book.best_bid_offer book in
     (* Match *)

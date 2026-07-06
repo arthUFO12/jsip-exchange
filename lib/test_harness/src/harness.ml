@@ -46,8 +46,6 @@ let make_request
   }
 ;;
 
-
-
 let buy ~price_cents ?size ?symbol ?participant ?time_in_force () =
   make_request
     ~side:Buy
@@ -70,9 +68,7 @@ let sell ~price_cents ?size ?symbol ?participant ?time_in_force () =
     ()
 ;;
 
-let cancel client_order_id =
-  Client_order_id.of_int client_order_id
-
+let cancel client_order_id = Client_order_id.of_int client_order_id
 
 (* --- Formatting --- *)
 
@@ -114,7 +110,10 @@ let sample_events : Exchange_event.t list =
     }
   in
   [ Order_accept
-      { order_id = Order_id.For_testing.of_int 1; request = order_request }
+      { order_id = Order_id.For_testing.of_int 1
+      ; participant = order_request.participant
+      ; request = order_request
+      }
   ; Fill
       { fill_id = 1
       ; symbol = aapl
@@ -136,7 +135,11 @@ let sample_events : Exchange_event.t list =
       ; reason = Ioc_remainder
       ; client_order_id = resting_client_order_id
       }
-  ; Order_reject { request = order_request; reason = "unknown symbol" }
+  ; Order_reject
+      { participant = order_request.participant
+      ; request = order_request
+      ; reason = "unknown symbol"
+      }
   ; Best_bid_offer_update
       { symbol = aapl
       ; bbo =

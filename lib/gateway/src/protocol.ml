@@ -2,7 +2,7 @@ open! Core
 open Jsip_types
 
 let format_event = function
-  | Exchange_event.Order_accept { order_id; request } ->
+  | Exchange_event.Order_accept { order_id; request; _ } ->
     sprintf
       "ACCEPTED id=%s %s %s %d@%s %s"
       (Order_id.to_string order_id)
@@ -27,7 +27,7 @@ let format_event = function
       (Client_order_id.to_string client_order_id)
       (Size.to_int remaining_size)
       (Cancel_reason.to_string reason)
-  | Order_reject { request; reason } ->
+  | Order_reject { request; reason; _ } ->
     sprintf
       "REJECTED %s %s %d@%s reason=%s"
       (Symbol.to_string request.symbol)

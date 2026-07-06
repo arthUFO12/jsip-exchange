@@ -16,5 +16,10 @@ let create participant =
 let participant t = t.participant
 let reader t = t.reader
 let push t event = Pipe.write_without_pushback_if_open t.writer event
-let close t = Pipe.close t.writer; Pipe.closed t.writer
+
+let close t =
+  Pipe.close t.writer;
+  Pipe.closed t.writer
+;;
+
 let is_closed t = Pipe.is_closed t.writer

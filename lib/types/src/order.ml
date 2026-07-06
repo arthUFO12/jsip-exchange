@@ -12,13 +12,22 @@ module Request = struct
     }
   [@@deriving sexp, bin_io]
 
-
-  let to_string { symbol; participant; side; price; size; time_in_force; client_order_id } =
+  let to_string
+    { symbol
+    ; participant
+    ; side
+    ; price
+    ; size
+    ; time_in_force
+    ; client_order_id
+    }
+    =
     let price = Price.to_string_dollar price in
     let size = Size.to_int size in
     [%string
       "%{side#Side} %{symbol#Symbol} %{size#Int}@%{price} \
-       %{time_in_force#Time_in_force} as %{participant#Participant} (id: %{client_order_id#Client_order_id})"]
+       %{time_in_force#Time_in_force} as %{participant#Participant} (id: \
+       %{client_order_id#Client_order_id})"]
   ;;
 end
 
@@ -82,21 +91,20 @@ let size t = t.size
 let remaining_size t = t.remaining_size
 let time_in_force t = t.time_in_force
 
-
-
 let price_time_cmp side ord1 ord2 =
   let ord1_price = price ord1 in
   let ord2_price = price ord2 in
   let ord1_id = order_id ord1 in
   let ord2_id = order_id ord2 in
-    if (Price.equal ord1_price ord2_price) then (Comparable.reverse Order_id.compare) ord1_id ord2_id
-    else (if Price.is_more_aggressive side ~price:ord1_price ~than:ord2_price then 1 else -1)
+  if Price.equal ord1_price ord2_price
+  then (Comparable.reverse Order_id.compare) ord1_id ord2_id
+  else if Price.is_more_aggressive side ~price:ord1_price ~than:ord2_price
+  then 1
+  else -1
+;;
 
+let better_price_time side ~ord1 ~ord2 = price_time_cmp side ord1 ord2 >= 0
 
-let better_price_time side ~ord1 ~ord2 = 
-  price_time_cmp side ord1 ord2 >= 0
-
-  
 let fill t ~by =
   if Size.( <= ) by Size.zero
   then

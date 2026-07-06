@@ -22,18 +22,20 @@ let%expect_test "login: submit without login fails" =
     let bob_request =
       Harness.sell ~price_cents:16000 ~participant:Harness.bob ()
     in
-    let%bind _ = Deferred.Or_error.try_with (fun () -> rpc_submit bob bob_request) in
+    let%bind _ =
+      Deferred.Or_error.try_with (fun () -> rpc_submit bob bob_request)
+    in
     return [%expect {||}])
 ;;
-
 
 let%expect_test "login: cancel without login fails" =
   with_server ~symbols:[ Harness.aapl ] (fun ~server:_ ~port ->
     let%bind bob = connect_as_no_login ~port Harness.bob in
-    let%bind () = rpc_cancel bob (Client_order_id.of_string "1") >>| Or_error.ok_exn in
+    let%bind () =
+      rpc_cancel bob (Client_order_id.of_string "1") >>| Or_error.ok_exn
+    in
     return [%expect {||}])
 ;;
-
 
 (* ---------------------------------------------------------------- *)
 (* Multiple client tests *)

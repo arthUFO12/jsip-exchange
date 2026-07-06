@@ -14,8 +14,6 @@ module SymbolConfig = struct
   [@@deriving sexp_of]
 end
 
-
-
 module Correlation = struct
   type t = float [@@deriving sexp, compare, equal]
 
@@ -52,7 +50,8 @@ type t =
   ; correlation_matrix : Correlation.t array array
   ; symbol_array : Symbol.t array
   }
-  (* Configuration for the market maker. *)
+(* Configuration for the market maker. *)
+
 module Config = struct
   type cfg =
     { mutable participant : Participant.t
@@ -62,10 +61,8 @@ module Config = struct
 
   type t = cfg
 
-  
   let get_symbols t = List.map t.symbol_configs ~f:(fun cfg -> cfg.symbol)
 end
-
 
 let create (config : Config.t) =
   let symbol_configs = config.symbol_configs in

@@ -69,11 +69,11 @@ val sell
   -> unit
   -> Order.Request.t
 
-val cancel : int -> Client_order_id.t
 (** {2 Actions}
 
     These submit orders and immediately print the resulting events, which is
     the common pattern in expect tests. *)
+val cancel : int -> Client_order_id.t
 
 (** Submit an order request through the matching engine and print all
     resulting events. Returns the event list for further inspection. *)

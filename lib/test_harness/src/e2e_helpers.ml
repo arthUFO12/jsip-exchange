@@ -31,11 +31,12 @@ let connect_as ~port participant =
   don't_wait_for
     (Pipe.iter_without_pushback session_feed ~f:(fun event ->
        let e = Protocol.format_event event in
-       print_endline [%string "[for %{sanitized_participant#Participant}] %{e}"]));
+       print_endline
+         [%string "[for %{sanitized_participant#Participant}] %{e}"]));
   return { conn }
 ;;
 
-let connect_as_no_login ~port _participant = 
+let connect_as_no_login ~port _participant =
   let where =
     Tcp.Where_to_connect.of_host_and_port { host = "localhost"; port }
   in
@@ -43,7 +44,7 @@ let connect_as_no_login ~port _participant =
   return { conn }
 ;;
 
-let connect_as_no_sub ~port participant= 
+let connect_as_no_sub ~port participant =
   let where =
     Tcp.Where_to_connect.of_host_and_port { host = "localhost"; port }
   in
@@ -56,6 +57,8 @@ let connect_as_no_sub ~port participant=
     >>| Or_error.ok_exn
   in
   return { conn }
+;;
+
 let connection client = client.conn
 
 let rpc_submit client request =
@@ -68,5 +71,8 @@ let rpc_book client symbol =
 ;;
 
 let rpc_cancel client client_order_id =
-  Rpc.Rpc.dispatch_exn Rpc_protocol.cancel_order_rpc client.conn client_order_id
+  Rpc.Rpc.dispatch_exn
+    Rpc_protocol.cancel_order_rpc
+    client.conn
+    client_order_id
 ;;

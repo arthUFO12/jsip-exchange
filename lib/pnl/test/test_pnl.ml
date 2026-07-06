@@ -4,9 +4,11 @@ open Jsip_pnl
 open Jsip_test_harness
 
 (* A hand-rolled fill. The order/client ids are irrelevant to P&L — only the
-   participants, side, symbol, price, and size matter — so we derive them from
-   [fill_id] to keep call sites short. *)
-let fill ~fill_id ~aggressor ~aggressor_side ~resting ~price_cents ~size : Fill.t =
+   participants, side, symbol, price, and size matter — so we derive them
+   from [fill_id] to keep call sites short. *)
+let fill ~fill_id ~aggressor ~aggressor_side ~resting ~price_cents ~size
+  : Fill.t
+  =
   { fill_id
   ; symbol = Harness.aapl
   ; price = Price.of_int_cents price_cents
@@ -73,7 +75,12 @@ let%expect_test "open, partially close, then mark to a trade print" =
          ~size:40)
   in
   (* A public trade print at $158 marks everyone's open position. *)
-  let pnl = Pnl.apply_trade_report pnl ~symbol:Harness.aapl ~price:(Price.of_int_cents 15800) in
+  let pnl =
+    Pnl.apply_trade_report
+      pnl
+      ~symbol:Harness.aapl
+      ~price:(Price.of_int_cents 15800)
+  in
   show pnl ~name:"Alice" ~participant:Harness.alice;
   show pnl ~name:"Bob" ~participant:Harness.bob;
   (* Alice: long 60 @ $150 avg, booked $200 on the 40 she sold ($5 x 40), and

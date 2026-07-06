@@ -22,14 +22,12 @@ val create : Symbol.t list -> t
 
     The event list is always non-empty (at minimum an acceptance or
     rejection). *)
-val submit : t -> Order.Request.t -> (Order.t option) * (Exchange_event.t list)
+val submit : t -> Order.Request.t -> Order.t option * Exchange_event.t list
 
 (** {2 Queries} *)
 
 (** The order book for a given symbol, or [None] if the symbol is not traded
     on this engine. *)
 val book : t -> Symbol.t -> Order_book.t option
-
-
 
 val cancel : t -> Order.t -> bool Or_error.t

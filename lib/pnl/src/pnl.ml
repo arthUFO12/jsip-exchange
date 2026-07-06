@@ -72,7 +72,7 @@ let apply_trade position ~dq ~price_cents =
     let closed = Int.min (abs dq) (abs inventory) in
     let position_side : Side.t = if inventory > 0 then Buy else Sell in
     (* The share of the cost basis attributable to the closed shares. *)
-    let cost_basis_removed = cost_basis_cents * (closed / abs inventory) in
+    let cost_basis_removed = cost_basis_cents * closed / abs inventory in
     let realized_delta =
       realized_on_reduce
         ~closed
