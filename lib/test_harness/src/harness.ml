@@ -30,14 +30,12 @@ let make_request
   ~price_cents
   ?(size = 100)
   ?(symbol = aapl)
-  ?(participant = alice)
   ?(time_in_force = Time_in_force.Day)
   ?(client_order_id = Client_order_id.create ())
   ()
   : Order.Request.t
   =
   { symbol
-  ; participant
   ; side
   ; price = Price.of_int_cents price_cents
   ; size = Size.of_int size
@@ -46,26 +44,12 @@ let make_request
   }
 ;;
 
-let buy ~price_cents ?size ?symbol ?participant ?time_in_force () =
-  make_request
-    ~side:Buy
-    ~price_cents
-    ?size
-    ?symbol
-    ?participant
-    ?time_in_force
-    ()
+let buy ~price_cents ?size ?symbol ?time_in_force () =
+  make_request ~side:Buy ~price_cents ?size ?symbol ?time_in_force ()
 ;;
 
-let sell ~price_cents ?size ?symbol ?participant ?time_in_force () =
-  make_request
-    ~side:Sell
-    ~price_cents
-    ?size
-    ?symbol
-    ?participant
-    ?time_in_force
-    ()
+let sell ~price_cents ?size ?symbol ?time_in_force () =
+  make_request ~side:Sell ~price_cents ?size ?symbol ?time_in_force ()
 ;;
 
 let cancel client_order_id = Client_order_id.of_int client_order_id
@@ -87,21 +71,27 @@ let print_events ?(show = Show.all) events =
 
 let print_event event = print_endline (Protocol.format_event event)
 
-let submit t request =
-  let _order, events = Matching_engine.submit t.engine request in
+let submit ?(participant = alice) t request =
+  let _order, events =
+    Matching_engine.submit t.engine ~participant request
+  in
   print_events events;
   events
 ;;
 
-let submit_ t request = ignore (submit t request : Exchange_event.t list)
-let submit_quiet t request = Matching_engine.submit (engine t) request |> snd
+let submit_ ?participant t request =
+  ignore (submit ?participant t request : Exchange_event.t list)
+;;
+
+let submit_quiet ?(participant = alice) t request =
+  Matching_engine.submit (engine t) ~participant request |> snd
+;;
 
 let sample_events : Exchange_event.t list =
   let resting_client_order_id = Client_order_id.create () in
   let aggressor_client_order_id = Client_order_id.create () in
   let order_request : Order.Request.t =
     { symbol = aapl
-    ; participant = alice
     ; side = Buy
     ; price = Price.of_int_cents 15000
     ; size = Size.of_int 100
@@ -111,7 +101,7 @@ let sample_events : Exchange_event.t list =
   in
   [ Order_accept
       { order_id = Order_id.For_testing.of_int 1
-      ; participant = order_request.participant
+      ; participant = alice
       ; request = order_request
       }
   ; Fill
@@ -136,7 +126,7 @@ let sample_events : Exchange_event.t list =
       ; client_order_id = resting_client_order_id
       }
   ; Order_reject
-      { participant = order_request.participant
+      { participant = alice
       ; request = order_request
       ; reason = "unknown symbol"
       }
@@ -159,8 +149,8 @@ let sample_events : Exchange_event.t list =
   ]
 ;;
 
-let submit_quiet_ t request =
-  ignore (submit_quiet t request : Exchange_event.t list)
+let submit_quiet_ ?participant t request =
+  ignore (submit_quiet ?participant t request : Exchange_event.t list)
 ;;
 
 let print_book t symbol =

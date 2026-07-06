@@ -11,10 +11,33 @@ module Connection_state : Connection_state_sig = struct
   type t = { mutable session : Session.t option }
 end
 
+(* An action as it travels the internal queue from a client-facing RPC
+   handler to the single matching-engine loop.
+
+   Every mutation of the order books happens on that one loop, so the
+   per-connection RPC handlers never touch the engine directly — they only
+   enqueue actions. This lets one thread focus on accepting connections while
+   another focuses on matching-engine logic, with no shared-state races.
+
+   Each action carries the authenticated [participant] because that identity
+   lives on the connection (established at login), not in the request — which
+   no longer names a participant on the wire. *)
+module Matching_engine_action = struct
+  type t =
+    | New_order of
+        { participant : Participant.t
+        ; request : Order.Request.t
+        }
+    | Cancel_order of
+        { participant : Participant.t
+        ; client_order_id : Client_order_id.t
+        }
+end
+
 type t =
   { engine : Matching_engine.t
   ; dispatcher : Dispatcher.t
-  ; request_writer : Order.Request.t Pipe.Writer.t
+  ; request_writer : Matching_engine_action.t Pipe.Writer.t
   ; tcp_server : (Socket.Address.Inet.t, int) Tcp.Server.t
   ; port : int
   }
@@ -26,106 +49,124 @@ type t =
    without the server's memory growing unboundedly. *)
 let request_queue_size_budget = 1024
 
-let handle_submit ~request_writer ~dispatcher (request : Order.Request.t) =
-  match Dispatcher.get_session dispatcher request.participant with
+let handle_submit
+  ~request_writer
+  ~dispatcher
+  (state : Connection_state.t)
+  (request : Order.Request.t)
+  =
+  match state.session with
   | None -> Deferred.Or_error.error_string "not logged in"
   | Some session ->
-    let sanitized_request =
-      { request with participant = Session.participant session }
-    in
+    (* The participant is the connection's authenticated identity, taken from
+       its login session — never from the request, which no longer carries
+       one. A client cannot submit orders in someone else's name. *)
+    let participant = Session.participant session in
     (match
        Dispatcher.register_coid_to_participant
          dispatcher
-         ~participant:sanitized_request.participant
-         ~client_order_id:sanitized_request.client_order_id
+         ~participant
+         ~client_order_id:request.client_order_id
      with
      | false ->
        Dispatcher.dispatch
          dispatcher
          [ Exchange_event.Order_reject
-             { participant = sanitized_request.participant
-             ; request = sanitized_request
-             ; reason = "duplicate client order id"
-             }
+             { participant; request; reason = "duplicate client order id" }
          ];
        Deferred.Or_error.error_string "duplicate client order id"
      | true ->
-       let%map () = Pipe.write_if_open request_writer sanitized_request in
+       let%map () =
+         Pipe.write_if_open
+           request_writer
+           (Matching_engine_action.New_order { participant; request })
+       in
        Ok ())
 ;;
 
-let handle_cancel ~engine ~dispatcher session client_order_id =
-  let events_list = ref [] in
-  let result = ref (Or_error.return ()) in
-  match Option.map session ~f:Session.participant with
+let handle_cancel
+  ~request_writer
+  (state : Connection_state.t)
+  client_order_id
+  =
+  match state.session with
+  | None -> Deferred.Or_error.error_string "not logged in"
+  | Some session ->
+    let participant = Session.participant session in
+    let%map () =
+      Pipe.write_if_open
+        request_writer
+        (Matching_engine_action.Cancel_order { participant; client_order_id })
+    in
+    Ok ()
+;;
+
+(* Compute the events produced by cancelling [participant]'s order with
+   [client_order_id]. Runs on the matching-engine loop. Mirrors the accept
+   path: a [Cancel_reject] when the order can't be found or removed,
+   otherwise an [Order_cancel] plus a [Best_bid_offer_update] when the
+   cancellation moved the BBO. *)
+let cancel_events ~engine ~dispatcher ~participant ~client_order_id =
+  match Dispatcher.get_order dispatcher ~participant ~client_order_id with
   | None ->
-    events_list
-    := Exchange_event.Cancel_reject
-         { participant = Participant.of_string ""
-         ; client_order_id
-         ; reason = "not logged in"
-         }
-       :: !events_list;
-    result := Or_error.error_string "not logged in"
-  | Some participant ->
-    (match Dispatcher.get_order dispatcher ~participant ~client_order_id with
-     | None ->
-       events_list
-       := Exchange_event.Cancel_reject
-            { participant; client_order_id; reason = "not found" }
-          :: !events_list;
-       result := Or_error.error_string "not found"
-     | Some order ->
-       (match Matching_engine.cancel engine order with
-        | Error e ->
-          events_list
-          := Exchange_event.Cancel_reject
-               { participant
-               ; client_order_id
-               ; reason = Error.to_string_hum e
+    [ Exchange_event.Cancel_reject
+        { participant; client_order_id; reason = "not found" }
+    ]
+  | Some order ->
+    (match Matching_engine.cancel engine order with
+     | Error e ->
+       [ Exchange_event.Cancel_reject
+           { participant; client_order_id; reason = Error.to_string_hum e }
+       ]
+     | Ok is_best_price ->
+       let cancel_event =
+         Exchange_event.Order_cancel
+           { order_id = Order.order_id order
+           ; participant = Order.participant order
+           ; symbol = Order.symbol order
+           ; remaining_size = Order.remaining_size order
+           ; reason = Cancel_reason.of_string "PARTICIPANT_REQUESTED"
+           ; client_order_id
+           }
+       in
+       let bbo_events =
+         if is_best_price
+         then (
+           let order_symbol = Order.symbol order in
+           [ Exchange_event.Best_bid_offer_update
+               { symbol = order_symbol
+               ; bbo =
+                   Matching_engine.book engine order_symbol
+                   |> Option.value_exn
+                   |> Order_book.best_bid_offer
                }
-             :: !events_list;
-          result := Or_error.error_string (Error.to_string_hum e)
-        | Ok is_best_price ->
-          if is_best_price
-          then (
-            let order_symbol = Order.symbol order in
-            events_list
-            := Exchange_event.Best_bid_offer_update
-                 { symbol = order_symbol
-                 ; bbo =
-                     Matching_engine.book engine order_symbol
-                     |> Option.value_exn
-                     |> Order_book.best_bid_offer
-                 }
-               :: !events_list);
-          events_list
-          := Exchange_event.Order_cancel
-               { order_id = Order.order_id order
-               ; participant = Order.participant order
-               ; symbol = Order.symbol order
-               ; remaining_size = Order.remaining_size order
-               ; reason = Cancel_reason.of_string "PARTICIPANT_REQUESTED"
-               ; client_order_id
-               }
-             :: !events_list;
-          result := Ok ()));
-    Dispatcher.dispatch dispatcher !events_list
+           ])
+         else []
+       in
+       cancel_event :: bbo_events)
 ;;
 
 let start_matching_loop ~engine ~dispatcher request_reader =
   don't_wait_for
-    (Pipe.iter_without_pushback request_reader ~f:(fun request ->
-       let order, events = Matching_engine.submit engine request in
-       match order with
-       | None -> ()
-       | Some order ->
-         Dispatcher.register_order_to_coid_participant_pair
+    (Pipe.iter_without_pushback request_reader ~f:(fun action ->
+       match (action : Matching_engine_action.t) with
+       | New_order { participant; request } ->
+         let order, events =
+           Matching_engine.submit engine ~participant request
+         in
+         (match order with
+          | None -> ()
+          | Some order ->
+            Dispatcher.register_order_to_coid_participant_pair
+              dispatcher
+              ~participant
+              ~client_order_id:request.client_order_id
+              ~order;
+            Dispatcher.dispatch dispatcher events)
+       | Cancel_order { participant; client_order_id } ->
+         Dispatcher.dispatch
            dispatcher
-           ~participant:request.participant
-           ~client_order_id:request.client_order_id
-           ~order;
-         Dispatcher.dispatch dispatcher events))
+           (cancel_events ~engine ~dispatcher ~participant ~client_order_id)))
 ;;
 
 let on_close_hook conn dispatcher session =
@@ -163,8 +204,8 @@ let start ~symbols ~port () =
       ~implementations:
         [ Rpc.Rpc.implement
             Rpc_protocol.submit_order_rpc
-            (fun _state request ->
-               handle_submit ~request_writer ~dispatcher request)
+            (fun (state : Connection_state.t) request ->
+               handle_submit ~request_writer ~dispatcher state request)
         ; Rpc.Rpc.implement' Rpc_protocol.book_query_rpc (fun state symbol ->
             ignore state;
             Matching_engine.book engine symbol
@@ -202,13 +243,7 @@ let start ~symbols ~port () =
             (fun
                 (state : Connection_state.t)
                 (client_order_id : Client_order_id.t)
-              ->
-               Deferred.Or_error.return
-                 (handle_cancel
-                    ~engine
-                    ~dispatcher
-                    state.session
-                    client_order_id))
+              -> handle_cancel ~request_writer state client_order_id)
         ]
       ~on_unknown_rpc:`Close_connection
       ~on_exception:Log_on_background_exn

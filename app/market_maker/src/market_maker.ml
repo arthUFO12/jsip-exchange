@@ -42,7 +42,6 @@ let seed_book_side mm_data symbol side fair_value_cents submit =
       let%bind () =
         submit
           ({ symbol = config.symbol
-           ; participant = Market_maker_data.get_participant mm_data
            ; side
            ; price = Price.of_int_cents (add_or_sub fair_value_cents offset)
            ; size = Size.of_int config.size_per_level

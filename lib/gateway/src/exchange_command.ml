@@ -42,10 +42,7 @@ let handle_cancel (rest_of_line : string list) : t Or_error.t =
   | [] -> Or_error.error_string "no client order id given"
 ;;
 
-let handle_buy_or_sell
-  (buy_or_sell : Verb.t)
-  (rest_of_line : string list)
-  ~(participant : Participant.t)
+let handle_buy_or_sell (buy_or_sell : Verb.t) (rest_of_line : string list)
   : t Or_error.t
   =
   match buy_or_sell with
@@ -79,7 +76,6 @@ let handle_buy_or_sell
             ; size
             ; price
             ; time_in_force
-            ; participant
             ; symbol
             ; client_order_id
             })
@@ -93,7 +89,7 @@ let handle_buy_or_sell
    optional default_participant argument Output: Exchange_command.t
    describing the string command sent to the exchange *)
 
-let parse ~participant command_string : t Or_error.t =
+let parse command_string : t Or_error.t =
   match
     String.split command_string ~on:' '
     |> List.map ~f:String.strip
@@ -109,8 +105,7 @@ let parse ~participant command_string : t Or_error.t =
        handle_book_or_subscribe book_or_sub rest
        (* in the BOOK case, we just return a Book.t variant of the exchange
           command with the ticker *)
-     | (Buy | Sell) as buy_or_sell ->
-       handle_buy_or_sell buy_or_sell rest ~participant
+     | (Buy | Sell) as buy_or_sell -> handle_buy_or_sell buy_or_sell rest
      | Cancel -> handle_cancel rest)
 ;;
 

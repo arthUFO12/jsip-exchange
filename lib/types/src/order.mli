@@ -11,13 +11,12 @@ open! Core
     order ID). This is what the gateway receives. *)
 module Request : sig
   type t =
-    { symbol : Symbol.t
-    ; participant : Participant.t
+    { client_order_id : Client_order_id.t
+    ; symbol : Symbol.t
     ; side : Side.t
     ; price : Price.t
     ; size : Size.t (** Number of shares/units. Must be positive. *)
     ; time_in_force : Time_in_force.t
-    ; client_order_id : Client_order_id.t
     }
   [@@deriving sexp, bin_io]
 
@@ -32,10 +31,15 @@ val to_string : t -> string
 
 (** {2 Construction} *)
 
-(** Create a live order from a request and an assigned order ID. The
-    [remaining_size] starts equal to the request's [size]. Raises if the
-    request's [size] is non-positive. *)
-val create : Request.t -> order_id:Order_id.t -> t
+(** Create a live order from a request, an assigned order ID, and the
+    submitting [participant] (established at login, no longer part of the
+    request). The [remaining_size] starts equal to the request's [size].
+    Raises if the request's [size] is non-positive. *)
+val create
+  :  Request.t
+  -> order_id:Order_id.t
+  -> participant:Participant.t
+  -> t
 
 (** {2 Accessors} *)
 

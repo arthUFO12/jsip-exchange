@@ -2,31 +2,22 @@ open! Core
 
 module Request = struct
   type t =
-    { symbol : Symbol.t
-    ; participant : Participant.t
+    { client_order_id : Client_order_id.t
+    ; symbol : Symbol.t
     ; side : Side.t
     ; price : Price.t
     ; size : Size.t
     ; time_in_force : Time_in_force.t
-    ; client_order_id : Client_order_id.t
     }
   [@@deriving sexp, bin_io]
 
-  let to_string
-    { symbol
-    ; participant
-    ; side
-    ; price
-    ; size
-    ; time_in_force
-    ; client_order_id
-    }
+  let to_string { symbol; side; price; size; time_in_force; client_order_id }
     =
     let price = Price.to_string_dollar price in
     let size = Size.to_int size in
     [%string
       "%{side#Side} %{symbol#Symbol} %{size#Int}@%{price} \
-       %{time_in_force#Time_in_force} as %{participant#Participant} (id: \
+       %{time_in_force#Time_in_force} (id: \
        %{client_order_id#Client_order_id})"]
   ;;
 end
@@ -64,14 +55,14 @@ let to_string
      %{participant#Participant})"]
 ;;
 
-let create (req : Request.t) ~order_id =
+let create (req : Request.t) ~order_id ~participant =
   if Size.( <= ) req.size Size.zero
   then
     raise_s
       [%message "Order.create: size must be positive" (req.size : Size.t)];
   { order_id
   ; symbol = req.symbol
-  ; participant = req.participant
+  ; participant
   ; side = req.side
   ; price = req.price
   ; size = req.size

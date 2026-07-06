@@ -55,7 +55,6 @@ let book_with_n_asks ?(min_price = 10_000) n =
     let order =
       Order.create
         { symbol = aapl
-        ; participant = bob
         ; side = Sell
         ; price = Price.of_int_cents (min_price + i)
         ; size = Size.of_int 100
@@ -63,6 +62,7 @@ let book_with_n_asks ?(min_price = 10_000) n =
         ; client_order_id = Client_order_id.create ()
         }
         ~order_id:(Order_id.Generator.next gen)
+        ~participant:bob
     in
     Order_book.add book order
   done;
@@ -76,8 +76,8 @@ let engine_with_n_asks ?(min_price = 10_000) n =
     ignore
       (Matching_engine.submit
          engine
+         ~participant:bob
          { symbol = aapl
-         ; participant = bob
          ; side = Sell
          ; price = Price.of_int_cents (min_price + i)
          ; size = Size.of_int 100
@@ -100,7 +100,6 @@ let bench_find_match ~n =
   let incoming =
     Order.create
       { symbol = aapl
-      ; participant = alice
       ; side = Buy
       ; price = Price.of_int_cents (min_price + n)
       ; size = Size.of_int 100
@@ -108,6 +107,7 @@ let bench_find_match ~n =
       ; client_order_id = alice_client_order_id
       }
       ~order_id:(Order_id.Generator.next gen)
+      ~participant:alice
   in
   Bench.Test.create ~name:[%string "find_match (n=%{n#Int})"] (fun () ->
     ignore (Order_book.find_match book incoming : Order.t option))
@@ -120,7 +120,6 @@ let bench_find_match_no_cross ~n =
   let incoming =
     Order.create
       { symbol = aapl
-      ; participant = alice
       ; side = Buy
       ; price = Price.of_int_cents (min_price - 1)
       ; size = Size.of_int 100
@@ -128,6 +127,7 @@ let bench_find_match_no_cross ~n =
       ; client_order_id = Client_order_id.create ()
       }
       ~order_id:(Order_id.Generator.next gen)
+      ~participant:alice
   in
   Bench.Test.create ~name:[%string "find_match_miss (n=%{n#Int})"] (fun () ->
     ignore (Order_book.find_match book incoming : Order.t option))
@@ -146,7 +146,6 @@ let bench_add_remove ~n =
   let order =
     Order.create
       { symbol = aapl
-      ; participant = alice
       ; side = Sell
       ; price = Price.of_int_cents (min_price + 500)
       ; size = Size.of_int 100
@@ -154,6 +153,7 @@ let bench_add_remove ~n =
       ; client_order_id = Client_order_id.create ()
       }
       ~order_id:(Order_id.Generator.next gen)
+      ~participant:alice
   in
   let oid = Order.order_id order in
   Bench.Test.create ~name:[%string "add+remove (n=%{n#Int})"] (fun () ->
@@ -179,8 +179,8 @@ let bench_submit_ioc_cross ~n =
        let events =
          Matching_engine.submit
            engine
+           ~participant:alice
            { symbol = aapl
-           ; participant = alice
            ; side = Buy
            ; price = Price.of_int_cents max_price
            ; size = Size.of_int 100
@@ -193,8 +193,8 @@ let bench_submit_ioc_cross ~n =
        ignore
          (Matching_engine.submit
             engine
+            ~participant:bob
             { symbol = aapl
-            ; participant = bob
             ; side = Sell
             ; price = Price.of_int_cents !next_price
             ; size = Size.of_int 100
@@ -212,8 +212,8 @@ let bench_submit_ioc_no_match ~n =
     ignore
       (Matching_engine.submit
          engine
+         ~participant:alice
          { symbol = aapl
-         ; participant = alice
          ; side = Buy
          ; price = Price.of_int_cents (min_price - 1)
          ; size = Size.of_int 100
@@ -231,8 +231,8 @@ let bench_submit_sweep ~n =
     ignore
       (Matching_engine.submit
          !engine
+         ~participant:alice
          { symbol = aapl
-         ; participant = alice
          ; side = Buy
          ; price = Price.of_int_cents 99_999
          ; size = Size.of_int (n * 100)
@@ -253,7 +253,6 @@ let bench_find_match_alloc ~n =
   let incoming =
     Order.create
       { symbol = aapl
-      ; participant = alice
       ; side = Buy
       ; price = Price.of_int_cents (min_price + n)
       ; size = Size.of_int 100
@@ -261,6 +260,7 @@ let bench_find_match_alloc ~n =
       ; client_order_id = Client_order_id.create ()
       }
       ~order_id:(Order_id.Generator.next gen)
+      ~participant:alice
   in
   (* Measure minor-heap allocations *)
   let measure_alloc f =

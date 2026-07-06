@@ -89,7 +89,6 @@ let accepted_event : Exchange_event.t =
     ; participant = alice
     ; request =
         { symbol = aapl
-        ; participant = alice
         ; side = Buy
         ; price = Price.of_int_cents 15000
         ; size = Size.of_int 10
@@ -120,13 +119,13 @@ let%expect_test "feed_event forwards every event verbatim to on_event" =
        ((bid (((price 14990) (size 100)))) (ask (((price 15010) (size 200)))))))
      (Fill
       ((fill_id 1) (symbol AAPL) (price 15000) (size 50) (aggressor_order_id 1)
-       (aggressor_participant Alice) (aggressor_client_order_id 2)
-       (aggressor_side Buy) (resting_order_id 2) (resting_participant Bob)
-       (resting_client_order_id 1)))
+       (aggressor_client_order_id 2) (aggressor_participant Alice)
+       (aggressor_side Buy) (resting_order_id 2) (resting_client_order_id 1)
+       (resting_participant Bob)))
      (Order_accept (order_id 1) (participant Alice)
       (request
-       ((symbol AAPL) (participant Alice) (side Buy) (price 15000) (size 10)
-        (time_in_force Day) (client_order_id 3)))))
+       ((client_order_id 3) (symbol AAPL) (side Buy) (price 15000) (size 10)
+        (time_in_force Day)))))
     |}];
   return ()
 ;;

@@ -47,15 +47,16 @@ val engine : t -> Matching_engine.t
 
     These build [Order.Request.t] values with sensible defaults:
     - symbol: AAPL
-    - participant: Alice
     - size: 100
-    - time_in_force: Day *)
+    - time_in_force: Day
+
+    The submitting participant is no longer part of a request — it is
+    supplied at submit time via the [?participant] argument of [submit]. *)
 
 val buy
   :  price_cents:int
   -> ?size:int
   -> ?symbol:Symbol.t
-  -> ?participant:Participant.t
   -> ?time_in_force:Time_in_force.t
   -> unit
   -> Order.Request.t
@@ -64,7 +65,6 @@ val sell
   :  price_cents:int
   -> ?size:int
   -> ?symbol:Symbol.t
-  -> ?participant:Participant.t
   -> ?time_in_force:Time_in_force.t
   -> unit
   -> Order.Request.t
@@ -76,11 +76,16 @@ val sell
 val cancel : int -> Client_order_id.t
 
 (** Submit an order request through the matching engine and print all
-    resulting events. Returns the event list for further inspection. *)
-val submit : t -> Order.Request.t -> Exchange_event.t list
+    resulting events. Returns the event list for further inspection. The
+    submitting participant defaults to [alice]. *)
+val submit
+  :  ?participant:Participant.t
+  -> t
+  -> Order.Request.t
+  -> Exchange_event.t list
 
 (** Submit and print, discarding the return value. *)
-val submit_ : t -> Order.Request.t -> unit
+val submit_ : ?participant:Participant.t -> t -> Order.Request.t -> unit
 
 (** {2 Sample events}
 
@@ -95,10 +100,18 @@ val submit_ : t -> Order.Request.t -> unit
 val sample_events : Exchange_event.t list
 
 (** As [submit], but events are not printed. *)
-val submit_quiet : t -> Order.Request.t -> Exchange_event.t list
+val submit_quiet
+  :  ?participant:Participant.t
+  -> t
+  -> Order.Request.t
+  -> Exchange_event.t list
 
 (** As [submit_quiet], but event are not printed. *)
-val submit_quiet_ : t -> Order.Request.t -> unit
+val submit_quiet_
+  :  ?participant:Participant.t
+  -> t
+  -> Order.Request.t
+  -> unit
 
 (** {2 Formatting}
 

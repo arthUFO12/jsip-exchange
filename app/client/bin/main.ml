@@ -55,8 +55,7 @@ market-data feed.|}];
       then loop ()
       else (
         match
-          (Exchange_command.parse ~participant line
-           : Exchange_command.t Or_error.t)
+          (Exchange_command.parse line : Exchange_command.t Or_error.t)
         with
         | Error err ->
           print_endline (Error.to_string_hum err);

@@ -8,4 +8,4 @@ type t =
   | Cancel of Client_order_id.t
 
 val to_string : t -> string
-val parse : participant:Participant.t -> string -> t Or_error.t
+val parse : string -> t Or_error.t
