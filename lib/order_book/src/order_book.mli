@@ -25,7 +25,7 @@ val add : t -> Order.t -> unit
 (** Remove an order by ID. *)
 val remove : t -> Order_id.t -> unit
 
-(** Remove an order by ID. Returns true if order id was present in the book **)
+(** Remove an order by ID. Returns true if order id was present in the book. *)
 val remove_with_confirmation : t -> Order_id.t -> bool
 
 (** Find a resting order by ID. *)
