@@ -6,6 +6,7 @@ end
 
 include T
 include Hashable.Make (T)
+include Comparable.Make (T)
 
 module Generator = struct
   type gen = { mutable counter : int }
@@ -17,6 +18,8 @@ module Generator = struct
     t.counter <- t.counter + 1;
     id
   ;;
+
+  type t = gen
 end
 
 let counter = ref 1
@@ -28,3 +31,4 @@ let create () =
 ;;
 
 let of_int = Fn.id
+let to_int (t : t) : int = t

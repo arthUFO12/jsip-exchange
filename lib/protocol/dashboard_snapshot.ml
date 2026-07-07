@@ -63,11 +63,7 @@ type t =
   }
 [@@deriving sexp, bin_io, compare, equal]
 
-
-
-let memory_stats_of_gc (gc_stat : Gc.Stat.t)
-  : Memory_stats.t
-  =
+let memory_stats_of_gc (gc_stat : Gc.Stat.t) : Memory_stats.t =
   { live_words = Gc.Stat.live_words gc_stat
   ; major_words = Gc.Stat.major_words gc_stat
   ; minor_words = Gc.Stat.minor_words gc_stat
@@ -75,4 +71,3 @@ let memory_stats_of_gc (gc_stat : Gc.Stat.t)
   ; minor_collections = Gc.Stat.minor_collections gc_stat
   }
 ;;
-

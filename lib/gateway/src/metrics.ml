@@ -1,6 +1,7 @@
 open! Core
 open Jsip_types
 open Jsip_order_book
+open Jsip_protocol
 
 type t =
   { latency : Latency_tracker.t
@@ -81,7 +82,7 @@ let participant_stats t ~now ~books =
     | true -> None
     | false ->
       Some
-        { Monitor_snapshot.Participant_stats.participant
+        { Dashboard_snapshot.Participant_stats.participant
         ; orders_per_sec
         ; resting_order_count
         })
@@ -90,7 +91,7 @@ let participant_stats t ~now ~books =
 let book_depth ~books ~focus_symbol =
   match List.Assoc.find books ~equal:Symbol.equal focus_symbol with
   | None ->
-    { Monitor_snapshot.Book_depth.symbol = focus_symbol
+    { Dashboard_snapshot.Book_depth.symbol = focus_symbol
     ; bbo = Bbo.empty
     ; total_resting_bid_size = Size.zero
     ; total_resting_ask_size = Size.zero
@@ -101,7 +102,7 @@ let book_depth ~books ~focus_symbol =
       |> List.fold ~init:Size.zero ~f:(fun acc order ->
         Size.( + ) acc (Order.remaining_size order))
     in
-    { Monitor_snapshot.Book_depth.symbol = focus_symbol
+    { Dashboard_snapshot.Book_depth.symbol = focus_symbol
     ; bbo = Order_book.best_bid_offer book
     ; total_resting_bid_size = total_resting_size Side.Buy
     ; total_resting_ask_size = total_resting_size Side.Sell
@@ -109,7 +110,7 @@ let book_depth ~books ~focus_symbol =
 ;;
 
 let build_snapshot t ~now ~memory ~books ~focus_symbol =
-  { Monitor_snapshot.sampled_at = now
+  { Dashboard_snapshot.sampled_at = now
   ; memory
   ; submit_latency = Latency_tracker.submit_stats t.latency ~now
   ; cancel_latency = Latency_tracker.cancel_stats t.latency ~now

@@ -1,0 +1,12 @@
+(executable
+ (name probe)
+ (libraries
+  jsip_types
+  jsip_gateway
+  async
+  async_rpc_websocket
+  uri
+  core
+  core_unix.command_unix)
+ (preprocess
+  (pps ppx_jane)))

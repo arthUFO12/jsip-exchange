@@ -3,7 +3,7 @@ open Jsip_gateway
 
 (* Print a latency summary as integer milliseconds so the expect output stays
    stable and readable (raw [Time_ns.Span.t] sexps auto-scale their unit). *)
-let show (stats : Monitor_snapshot.Latency_stats.t) =
+let show (stats : Dashboard_snapshot.Latency_stats.t) =
   let ms span = Float.iround_nearest_exn (Time_ns.Span.to_ms span) in
   printf
     "count=%d mean=%dms p50=%dms p99=%dms max=%dms\n"

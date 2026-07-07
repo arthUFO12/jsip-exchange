@@ -21,6 +21,7 @@
     ]} *)
 
 open! Core
+open Jsip_protocol
 
 type t
 
@@ -37,8 +38,9 @@ val record_submit : t -> now:Time_ns.t -> latency:Time_ns.Span.t -> unit
 val record_cancel : t -> now:Time_ns.t -> latency:Time_ns.Span.t -> unit
 
 (** Summary of submit-order latencies within the {!window} ending at [~now].
-    {!Monitor_snapshot.Latency_stats.empty} when the window holds no samples. *)
-val submit_stats : t -> now:Time_ns.t -> Monitor_snapshot.Latency_stats.t
+    {!Dashboard_snapshot.Latency_stats.empty} when the window holds no
+    samples. *)
+val submit_stats : t -> now:Time_ns.t -> Dashboard_snapshot.Latency_stats.t
 
 (** Summary of cancel-order latencies within the {!window} ending at [~now]. *)
-val cancel_stats : t -> now:Time_ns.t -> Monitor_snapshot.Latency_stats.t
+val cancel_stats : t -> now:Time_ns.t -> Dashboard_snapshot.Latency_stats.t

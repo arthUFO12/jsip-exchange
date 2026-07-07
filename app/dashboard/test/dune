@@ -1,0 +1,6 @@
+(library
+ (name jsip_dashboard_test)
+ (libraries jsip_types jsip_gateway jsip_dashboard jsip_test_harness core)
+ (inline_tests)
+ (preprocess
+  (pps ppx_jane)))

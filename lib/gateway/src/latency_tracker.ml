@@ -1,4 +1,5 @@
 open! Core
+open Jsip_protocol
 
 (* One measured latency and the wall-clock instant it was observed. The
    instant is what lets us decide, later, whether the sample is still inside
@@ -48,12 +49,12 @@ let record_cancel t ~now ~latency = record t.cancel ~now ~latency
 (* Summarize the latencies in the trailing window into count/mean/max plus
    nearest-rank p50/p90/p99. [latencies] arrives in insertion order; we sort
    once and read every order statistic off the sorted list. An empty window
-   summarizes to [Monitor_snapshot.Latency_stats.empty]. *)
+   summarizes to [Dashboard_snapshot.Latency_stats.empty]. *)
 let summarize (latencies : Time_ns.Span.t list)
-  : Monitor_snapshot.Latency_stats.t
+  : Dashboard_snapshot.Latency_stats.t
   =
   match latencies with
-  | [] -> Monitor_snapshot.Latency_stats.empty
+  | [] -> Dashboard_snapshot.Latency_stats.empty
   | _ :: _ ->
     let count = List.length latencies in
     let mean =

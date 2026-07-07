@@ -130,7 +130,7 @@ let trade_back_and_forth ~where_to_connect =
   Clock_ns.every cycle_period (fun () -> don't_wait_for (cycle ()))
 ;;
 
-let start ~port ~market_maker_behavior =
+let start ~port ~market_maker_behavior ~http_port ~dashboard_dir =
   let%bind server =
     Exchange_server.start ~symbols:default_symbols ~port ()
   in
@@ -162,6 +162,18 @@ let start ~port ~market_maker_behavior =
     List.map default_symbols ~f:Symbol.to_string |> String.concat ~sep:", "
   in
   print_endline [%string "Trading: %{symbols}"];
+  let%bind () =
+    match http_port with
+    | None -> Deferred.unit
+    | Some http_port ->
+      let%map () =
+        Exchange_server.serve_http server ~http_port ~dashboard_dir
+      in
+      print_endline
+        [%string
+          "Web dashboard on http://localhost:%{http_port#Int}/ (serving \
+           %{dashboard_dir})"]
+  in
   Exchange_server.close_finished server
 ;;
 
@@ -170,6 +182,20 @@ let () =
     ~summary:"JSIP Exchange server"
     (let%map_open.Command port =
        flag "-port" (required int) ~doc:"PORT port to listen on"
+     and http_port =
+       flag
+         "-http-port"
+         (optional int)
+         ~doc:
+           "PORT also serve the web dashboard (WebSocket RPC + static \
+            files) on this HTTP port"
+     and dashboard_dir =
+       flag
+         "-dashboard-dir"
+         (optional_with_default "_build/default/app/dashboard/bin" string)
+         ~doc:
+           "DIR directory with the dashboard's index.html and main.bc.js \
+            (default _build/default/app/dashboard/bin)"
      and market_maker_behavior =
        choose_one
          ~if_nothing_chosen:(Default_to `Do_nothing)
@@ -188,6 +214,6 @@ let () =
                 -seed-market-maker)"
          ]
      in
-     fun () -> start ~port ~market_maker_behavior)
+     fun () -> start ~port ~market_maker_behavior ~http_port ~dashboard_dir)
   |> Command_unix.run
 ;;

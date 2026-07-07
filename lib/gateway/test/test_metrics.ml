@@ -15,7 +15,7 @@ let books_of harness symbols =
 
 (* Distinct values per field so the expect output shows each one is carried
    through [build_snapshot] to the right place. *)
-let test_memory : Monitor_snapshot.Memory_stats.t =
+let test_memory : Dashboard_snapshot.Memory_stats.t =
   { live_words = 4096
   ; major_words = 100.
   ; minor_words = 250.
@@ -24,7 +24,7 @@ let test_memory : Monitor_snapshot.Memory_stats.t =
   }
 ;;
 
-let show (snap : Monitor_snapshot.t) =
+let show (snap : Dashboard_snapshot.t) =
   let mem = snap.memory in
   printf
     "memory: live_words=%d major_words=%.0f minor_words=%.0f \
@@ -37,7 +37,7 @@ let show (snap : Monitor_snapshot.t) =
   printf "participants:\n";
   List.iter
     snap.participants
-    ~f:(fun (p : Monitor_snapshot.Participant_stats.t) ->
+    ~f:(fun (p : Dashboard_snapshot.Participant_stats.t) ->
       printf
         "  %s rate=%.1f resting=%d\n"
         (Participant.to_string p.participant)

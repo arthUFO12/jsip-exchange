@@ -27,10 +27,29 @@ let command =
          "-seed"
          (optional_with_default 0 int)
          ~doc:"INT random seed for reproducible scenarios (default 0)"
+     and dashboard =
+       flag
+         "-dashboard"
+         (optional_with_default false bool)
+         ~doc:
+           "BOOL also serve the web dashboard (WebSocket RPC + static \
+            files) alongside the exchange (default false)"
+     and http_port =
+       flag
+         "-http-port"
+         (optional_with_default 8080 int)
+         ~doc:"PORT HTTP/WebSocket port for the web dashboard (default 8080)"
+     and dashboard_dir =
+       flag
+         "-dashboard-dir"
+         (optional_with_default "_build/default/app/dashboard/bin" string)
+         ~doc:
+           "DIR directory with the dashboard's index.html and main.bc.js \
+            (default _build/default/app/dashboard/bin)"
      in
      fun () ->
        let config = S.configure () in
-       Runner.run config ~port ~seed)
+       Runner.run config ~port ~seed ~dashboard ~http_port ~dashboard_dir)
     ~behave_nicely_in_pipeline:false
 ;;
 

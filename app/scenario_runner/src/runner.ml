@@ -31,12 +31,11 @@ let start_bot ~where_to_connect ~oracle (Bot_spec.T spec) =
   let submit request =
     Rpc.Rpc.dispatch_exn Rpc_protocol.submit_order_rpc connection request
   in
-  let cancel order_id =
-    return
-      (Or_error.error_s
-         [%message
-           "Scenario runner: cancel RPC not implemented yet"
-             (order_id : Client_order_id.t)])
+  let cancel client_order_id =
+    Rpc.Rpc.dispatch_exn
+      Rpc_protocol.cancel_order_rpc
+      connection
+      client_order_id
   in
   let bot =
     Bot_runtime.create
@@ -74,12 +73,30 @@ let start_bot ~where_to_connect ~oracle (Bot_spec.T spec) =
   return ()
 ;;
 
-let run (config : Scenario_config.t) ~port ~seed =
+let run
+  (config : Scenario_config.t)
+  ~port
+  ~seed
+  ~dashboard
+  ~http_port
+  ~dashboard_dir
+  =
   print_endline
     [%string
       "[scenario] starting %{config.name} on port %{port#Int} \
        (seed=%{seed#Int})"];
   let%bind server = Exchange_server.start ~symbols:config.symbols ~port () in
+  let%bind () =
+    match dashboard with
+    | false -> return ()
+    | true ->
+      let%map () =
+        Exchange_server.serve_http server ~http_port ~dashboard_dir
+      in
+      print_endline
+        [%string
+          "[scenario] web dashboard on http://localhost:%{http_port#Int}/"]
+  in
   let where_to_connect =
     Tcp.Where_to_connect.of_host_and_port
       { Host_and_port.host = "localhost"; port }

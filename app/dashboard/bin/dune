@@ -1,0 +1,27 @@
+(executable
+ (name main)
+ (modes js)
+ (js_of_ocaml
+  (flags
+   (:standard --effects=cps)))
+ (libraries
+  jsip_types
+  jsip_protocol
+  jsip_dashboard_web
+  bonsai_web
+  async_js
+  async_rpc_kernel
+  async_kernel
+  core
+  js_of_ocaml)
+ (preprocess
+  (pps ppx_jane bonsai.ppx_bonsai js_of_ocaml-ppx)))
+
+; Stage the servable assets (JS bundle + page) side by side in the build dir,
+; so `dune build @dashboard` produces a directory the exchange server can point
+; `-dashboard-dir` at.
+
+(rule
+ (alias dashboard)
+ (deps index.html main.bc.js)
+ (action (progn)))

@@ -91,10 +91,4 @@ type t =
   }
 [@@deriving sexp, bin_io, compare, equal]
 
-
-
 val memory_stats_of_gc : Gc.Stat.t -> Memory_stats.t
-
-
-
-

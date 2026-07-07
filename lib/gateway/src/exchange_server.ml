@@ -2,6 +2,7 @@ open! Core
 open! Async
 open Jsip_types
 open Jsip_order_book
+open Jsip_protocol
 
 module type Connection_state_sig = sig
   type t = { mutable session : Session.t option }
@@ -46,6 +47,10 @@ type t =
   { engine : Matching_engine.t
   ; dispatcher : Dispatcher.t
   ; request_writer : Matching_engine_action.t Pipe.Writer.t
+  ; implementations : Connection_state.t Rpc.Implementations.t
+      (* Shared by the TCP server ({!start}) and the WebSocket dashboard
+         server ({!serve_http}) so both front-ends dispatch to the same one
+         exchange. *)
   ; tcp_server : (Socket.Address.Inet.t, int) Tcp.Server.t
   ; port : int
   }
@@ -216,9 +221,9 @@ let handle_session_feed (state : Connection_state.t) =
   | Some session -> Deferred.Or_error.return (Session.reader session)
 ;;
 
-let monitor_snapshot ~engine ~symbols ~monitor ~focus_symbol =
+let dashboard_snapshot ~engine ~symbols ~monitor ~focus_symbol =
   let now = Time_ns.now () in
-  let memory = Monitor_snapshot.memory_stats_of_gc (Gc.stat ()) in
+  let memory = Dashboard_snapshot.memory_stats_of_gc (Gc.stat ()) in
   let books =
     List.filter_map symbols ~f:(fun symbol ->
       Matching_engine.book engine symbol
@@ -238,8 +243,71 @@ let handle_monitor_feed ~engine ~symbols ~monitor focus_symbol =
     (fun () ->
        Pipe.write_without_pushback_if_open
          writer
-         (monitor_snapshot ~engine ~symbols ~monitor ~focus_symbol));
+         (dashboard_snapshot ~engine ~symbols ~monitor ~focus_symbol));
   return (Ok reader)
+;;
+
+(* The RPC dispatch table. Factored out of [start] so the same table can be
+   handed to both the TCP server and the WebSocket dashboard server — a
+   [Rpc.Implementations.t] is a stateless routing table, safe to share across
+   listeners, and sharing it is what makes the dashboard observe the very
+   same order books the TCP-connected bots trade on. *)
+let build_implementations
+  ~engine
+  ~dispatcher
+  ~request_writer
+  ~monitor
+  ~symbols
+  =
+  Rpc.Implementations.create_exn
+    ~implementations:
+      [ Rpc.Rpc.implement
+          Rpc_protocol.submit_order_rpc
+          (fun (state : Connection_state.t) request ->
+             handle_submit ~request_writer ~dispatcher state request)
+      ; Rpc.Rpc.implement' Rpc_protocol.book_query_rpc (fun state symbol ->
+          ignore state;
+          Matching_engine.book engine symbol
+          |> Option.map ~f:Order_book.snapshot)
+      ; Rpc.Pipe_rpc.implement
+          Rpc_protocol.market_data_rpc
+          (fun state symbols ->
+             ignore state;
+             let reader =
+               Dispatcher.subscribe_market_data dispatcher symbols
+             in
+             return (Ok reader))
+      ; Rpc.Pipe_rpc.implement
+          Rpc_protocol.session_feed_rpc
+          (fun (state : Connection_state.t) () -> handle_session_feed state)
+      ; Rpc.Rpc.implement
+          Rpc_protocol.login_rpc
+          (fun (state : Connection_state.t) (name : string) ->
+             let%bind participant_or_error = handle_login dispatcher name in
+             (match participant_or_error with
+              | Ok participant ->
+                state.session
+                <- Some (Dispatcher.get_session_exn dispatcher participant)
+              | Error _ -> ());
+             return participant_or_error)
+      ; Rpc.Pipe_rpc.implement Rpc_protocol.audit_log_rpc (fun state () ->
+          ignore state;
+          let reader = Dispatcher.subscribe_audit dispatcher in
+          return (Ok reader))
+      ; Rpc.Pipe_rpc.implement
+          Rpc_protocol.monitor_feed_rpc
+          (fun state focus_symbol ->
+             ignore state;
+             handle_monitor_feed ~engine ~symbols ~monitor focus_symbol)
+      ; Rpc.Rpc.implement
+          Rpc_protocol.cancel_order_rpc
+          (fun
+              (state : Connection_state.t)
+              (client_order_id : Client_order_id.t)
+            -> handle_cancel ~request_writer state client_order_id)
+      ]
+    ~on_unknown_rpc:`Close_connection
+    ~on_exception:Log_on_background_exn
 ;;
 
 let start ~symbols ~port () =
@@ -250,58 +318,12 @@ let start ~symbols ~port () =
   Pipe.set_size_budget request_writer request_queue_size_budget;
   start_matching_loop ~engine ~dispatcher ~monitor request_reader;
   let implementations =
-    Rpc.Implementations.create_exn
-      ~implementations:
-        [ Rpc.Rpc.implement
-            Rpc_protocol.submit_order_rpc
-            (fun (state : Connection_state.t) request ->
-               handle_submit ~request_writer ~dispatcher state request)
-        ; Rpc.Rpc.implement' Rpc_protocol.book_query_rpc (fun state symbol ->
-            ignore state;
-            Matching_engine.book engine symbol
-            |> Option.map ~f:Order_book.snapshot)
-        ; Rpc.Pipe_rpc.implement
-            Rpc_protocol.market_data_rpc
-            (fun state symbols ->
-               ignore state;
-               let reader =
-                 Dispatcher.subscribe_market_data dispatcher symbols
-               in
-               return (Ok reader))
-        ; Rpc.Pipe_rpc.implement
-            Rpc_protocol.session_feed_rpc
-            (fun (state : Connection_state.t) () ->
-               handle_session_feed state)
-        ; Rpc.Rpc.implement
-            Rpc_protocol.login_rpc
-            (fun (state : Connection_state.t) (name : string) ->
-               let%bind participant_or_error =
-                 handle_login dispatcher name
-               in
-               (match participant_or_error with
-                | Ok participant ->
-                  state.session
-                  <- Some (Dispatcher.get_session_exn dispatcher participant)
-                | Error _ -> ());
-               return participant_or_error)
-        ; Rpc.Pipe_rpc.implement Rpc_protocol.audit_log_rpc (fun state () ->
-            ignore state;
-            let reader = Dispatcher.subscribe_audit dispatcher in
-            return (Ok reader))
-        ; Rpc.Pipe_rpc.implement
-            Rpc_protocol.monitor_feed_rpc
-            (fun state focus_symbol ->
-               ignore state;
-               handle_monitor_feed ~engine ~symbols ~monitor focus_symbol)
-        ; Rpc.Rpc.implement
-            Rpc_protocol.cancel_order_rpc
-            (fun
-                (state : Connection_state.t)
-                (client_order_id : Client_order_id.t)
-              -> handle_cancel ~request_writer state client_order_id)
-        ]
-      ~on_unknown_rpc:`Close_connection
-      ~on_exception:Log_on_background_exn
+    build_implementations
+      ~engine
+      ~dispatcher
+      ~request_writer
+      ~monitor
+      ~symbols
   in
   let%map tcp_server =
     Rpc.Connection.serve
@@ -316,7 +338,45 @@ let start ~symbols ~port () =
       ()
   in
   let actual_port = Tcp.Server.listening_on tcp_server in
-  { engine; dispatcher; request_writer; tcp_server; port = actual_port }
+  { engine
+  ; dispatcher
+  ; request_writer
+  ; implementations
+  ; tcp_server
+  ; port = actual_port
+  }
+;;
+
+(* Serve non-websocket HTTP requests as static files out of [dashboard_dir]:
+   [/] maps to [index.html], any other path to the file of that name. Guards
+   against [..] path traversal; a real deployment would also pin a MIME type
+   and cache headers. *)
+let respond_static ~dashboard_dir (request : Cohttp_async.Request.t) =
+  let path = Uri.path (Cohttp.Request.uri request) in
+  let relative =
+    match path with
+    | "" | "/" -> "index.html"
+    | other -> String.chop_prefix_if_exists other ~prefix:"/"
+  in
+  match String.is_substring relative ~substring:".." with
+  | true -> Cohttp_async.Server.respond_string ~status:`Forbidden "forbidden"
+  | false -> Cohttp_async.Server.respond_with_file (dashboard_dir ^/ relative)
+;;
+
+let serve_http t ~http_port ~dashboard_dir =
+  let%map (_ : (Socket.Address.Inet.t, int) Cohttp_async.Server.t) =
+    Rpc_websocket.Rpc.serve
+      ~where_to_listen:(Tcp.Where_to_listen.of_port http_port)
+      ~implementations:t.implementations
+      ~initial_connection_state:(fun () _from _addr conn ->
+        let state = ({ session = None } : Connection_state.t) in
+        on_close_hook conn t.dispatcher state.session;
+        state)
+      ~http_handler:(fun () ~body:_ _addr request ->
+        respond_static ~dashboard_dir request)
+      ()
+  in
+  ()
 ;;
 
 let port t = t.port

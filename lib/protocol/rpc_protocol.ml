@@ -1,6 +1,11 @@
 open! Core
-open! Async
 open Jsip_types
+
+(* The RPC descriptions are transport-agnostic, so they take [Rpc] from the
+   [async_rpc_kernel] rather than the full [Async] library. That keeps this
+   module (and everything that only needs the wire protocol, like the web
+   dashboard) free of the Unix/threads dependencies the full stack drags in. *)
+module Rpc = Async_rpc_kernel.Rpc
 
 let submit_order_rpc =
   Rpc.Rpc.create
@@ -73,7 +78,7 @@ let monitor_feed_rpc =
     ~name:"monitor-feed"
     ~version:1
     ~bin_query:Symbol.bin_t
-    ~bin_response:Monitor_snapshot.bin_t
+    ~bin_response:Dashboard_snapshot.bin_t
     ~bin_error:Error.bin_t
     ()
 ;;

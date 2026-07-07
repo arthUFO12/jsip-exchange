@@ -1,5 +1,5 @@
 (** Aggregates the live metrics behind {!Rpc_protocol.monitor_feed_rpc} and
-    assembles them into a {!Monitor_snapshot.t}.
+    assembles them into a {!Dashboard_snapshot.t}.
 
     (Named [Metrics] rather than [Monitor] to avoid clashing with
     {!Async.Monitor}, which every [open! Async] brings into scope.)
@@ -23,6 +23,7 @@
 open! Core
 open Jsip_types
 open Jsip_order_book
+open Jsip_protocol
 
 type t
 
@@ -52,7 +53,7 @@ val record_cancel : t -> now:Time_ns.t -> latency:Time_ns.Span.t -> unit
 val build_snapshot
   :  t
   -> now:Time_ns.t
-  -> memory:Monitor_snapshot.Memory_stats.t
+  -> memory:Dashboard_snapshot.Memory_stats.t
   -> books:(Symbol.t * Order_book.t) list
   -> focus_symbol:Symbol.t
-  -> Monitor_snapshot.t
+  -> Dashboard_snapshot.t

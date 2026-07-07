@@ -1,0 +1,12 @@
+; Browser-safe wire protocol: the RPC descriptions and the streamed
+; Dashboard_snapshot record, shared by the native server (jsip_gateway) and the
+; js_of_ocaml web dashboard. Depends only on [async_rpc_kernel] (the transport-
+; agnostic RPC kernel) — NOT the full [async] / [cohttp] stack, which pulls in
+; Unix threads and cannot be linked into a browser bundle.
+
+(library
+ (name jsip_protocol)
+ (public_name jsip-exchange.jsip_protocol)
+ (libraries jsip_types async_rpc_kernel core)
+ (preprocess
+  (pps ppx_jane)))
