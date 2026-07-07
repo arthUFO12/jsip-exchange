@@ -67,3 +67,13 @@ let audit_log_rpc =
     ~bin_error:Error.bin_t
     ()
 ;;
+
+let monitor_feed_rpc =
+  Rpc.Pipe_rpc.create
+    ~name:"monitor-feed"
+    ~version:1
+    ~bin_query:Symbol.bin_t
+    ~bin_response:Monitor_snapshot.bin_t
+    ~bin_error:Error.bin_t
+    ()
+;;

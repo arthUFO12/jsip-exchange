@@ -21,16 +21,24 @@ end
 
    Each action carries the authenticated [participant] because that identity
    lives on the connection (established at login), not in the request — which
-   no longer names a participant on the wire. *)
+   no longer names a participant on the wire.
+
+   Each action also carries [submitted_at], the instant the client-facing RPC
+   handler received the request. Because the handler and the matching loop
+   run on different Async jobs, this timestamp is the only way to correlate
+   the two halves of one request; the loop reads it back to measure
+   end-to-end latency for the monitoring dashboard. *)
 module Matching_engine_action = struct
   type t =
     | New_order of
         { participant : Participant.t
         ; request : Order.Request.t
+        ; submitted_at : Time_ns.t
         }
     | Cancel_order of
         { participant : Participant.t
         ; client_order_id : Client_order_id.t
+        ; submitted_at : Time_ns.t
         }
 end
 
@@ -79,7 +87,8 @@ let handle_submit
        let%map () =
          Pipe.write_if_open
            request_writer
-           (Matching_engine_action.New_order { participant; request })
+           (Matching_engine_action.New_order
+              { participant; request; submitted_at = Time_ns.now () })
        in
        Ok ())
 ;;
@@ -96,7 +105,8 @@ let handle_cancel
     let%map () =
       Pipe.write_if_open
         request_writer
-        (Matching_engine_action.Cancel_order { participant; client_order_id })
+        (Matching_engine_action.Cancel_order
+           { participant; client_order_id; submitted_at = Time_ns.now () })
     in
     Ok ()
 ;;
@@ -146,11 +156,15 @@ let cancel_events ~engine ~dispatcher ~participant ~client_order_id =
        cancel_event :: bbo_events)
 ;;
 
-let start_matching_loop ~engine ~dispatcher request_reader =
+(* End-to-end latency for one request: from when the RPC handler stamped
+   [submitted_at] to now, the moment the matching engine has finished. *)
+let latency_since submitted_at = Time_ns.diff (Time_ns.now ()) submitted_at
+
+let start_matching_loop ~engine ~dispatcher ~monitor request_reader =
   don't_wait_for
     (Pipe.iter_without_pushback request_reader ~f:(fun action ->
        match (action : Matching_engine_action.t) with
-       | New_order { participant; request } ->
+       | New_order { participant; request; submitted_at } ->
          let order, events =
            Matching_engine.submit engine ~participant request
          in
@@ -162,11 +176,20 @@ let start_matching_loop ~engine ~dispatcher request_reader =
               ~participant
               ~client_order_id:request.client_order_id
               ~order;
-            Dispatcher.dispatch dispatcher events)
-       | Cancel_order { participant; client_order_id } ->
+            Dispatcher.dispatch dispatcher events);
+         Metrics.record_submit
+           monitor
+           ~now:(Time_ns.now ())
+           ~latency:(latency_since submitted_at)
+           ~participant
+       | Cancel_order { participant; client_order_id; submitted_at } ->
          Dispatcher.dispatch
            dispatcher
-           (cancel_events ~engine ~dispatcher ~participant ~client_order_id)))
+           (cancel_events ~engine ~dispatcher ~participant ~client_order_id);
+         Metrics.record_cancel
+           monitor
+           ~now:(Time_ns.now ())
+           ~latency:(latency_since submitted_at)))
 ;;
 
 let on_close_hook conn dispatcher session =
@@ -193,12 +216,39 @@ let handle_session_feed (state : Connection_state.t) =
   | Some session -> Deferred.Or_error.return (Session.reader session)
 ;;
 
+let monitor_snapshot ~engine ~symbols ~monitor ~focus_symbol =
+  let now = Time_ns.now () in
+  let memory = Monitor_snapshot.memory_stats_of_gc (Gc.stat ()) in
+  let books =
+    List.filter_map symbols ~f:(fun symbol ->
+      Matching_engine.book engine symbol
+      |> Option.map ~f:(fun book -> symbol, book))
+  in
+  Metrics.build_snapshot monitor ~now ~memory ~books ~focus_symbol
+;;
+
+(* Serve one monitoring subscriber: a fresh pipe fed once per second until
+   the subscriber disconnects. [~stop:(Pipe.closed writer)] tears the timer
+   down on disconnect so no sampling work outlives the subscription. *)
+let handle_monitor_feed ~engine ~symbols ~monitor focus_symbol =
+  let reader, writer = Pipe.create () in
+  Clock_ns.every
+    ~stop:(Pipe.closed writer)
+    (Time_ns.Span.of_sec 1.)
+    (fun () ->
+       Pipe.write_without_pushback_if_open
+         writer
+         (monitor_snapshot ~engine ~symbols ~monitor ~focus_symbol));
+  return (Ok reader)
+;;
+
 let start ~symbols ~port () =
   let engine = Matching_engine.create symbols in
   let dispatcher = Dispatcher.create () in
+  let monitor = Metrics.create () in
   let request_reader, request_writer = Pipe.create () in
   Pipe.set_size_budget request_writer request_queue_size_budget;
-  start_matching_loop ~engine ~dispatcher request_reader;
+  start_matching_loop ~engine ~dispatcher ~monitor request_reader;
   let implementations =
     Rpc.Implementations.create_exn
       ~implementations:
@@ -238,6 +288,11 @@ let start ~symbols ~port () =
             ignore state;
             let reader = Dispatcher.subscribe_audit dispatcher in
             return (Ok reader))
+        ; Rpc.Pipe_rpc.implement
+            Rpc_protocol.monitor_feed_rpc
+            (fun state focus_symbol ->
+               ignore state;
+               handle_monitor_feed ~engine ~symbols ~monitor focus_symbol)
         ; Rpc.Rpc.implement
             Rpc_protocol.cancel_order_rpc
             (fun

@@ -54,3 +54,13 @@ val audit_log_rpc : (unit, Exchange_event.t, Error.t) Rpc.Pipe_rpc.t
 val login_rpc : (string, Participant.t Or_error.t) Rpc.Rpc.t
 val session_feed_rpc : (unit, Exchange_event.t, Error.t) Rpc.Pipe_rpc.t
 val cancel_order_rpc : (Client_order_id.t, unit Or_error.t) Rpc.Rpc.t
+
+(** Subscribe to the monitoring dashboard feed: one {!Monitor_snapshot.t} per
+    second bundling process memory, submit/cancel latency, per-participant
+    order rate and resting-order count, and order-book depth for one symbol.
+
+    The query is that focus [Symbol.t] — the symbol whose depth the
+    snapshot's [book_depth] section describes; the rest of each snapshot is
+    exchange-wide. Like {!audit_log_rpc}, this is an operator-facing RPC for
+    the monitor in [app/monitor], not for ordinary participants. *)
+val monitor_feed_rpc : (Symbol.t, Monitor_snapshot.t, Error.t) Rpc.Pipe_rpc.t

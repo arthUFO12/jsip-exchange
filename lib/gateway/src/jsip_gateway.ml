@@ -4,3 +4,6 @@ module Session = Session
 module Dispatcher = Dispatcher
 module Exchange_server = Exchange_server
 module Exchange_command = Exchange_command
+module Metrics = Metrics
+module Monitor_snapshot = Monitor_snapshot
+module Latency_tracker = Latency_tracker
