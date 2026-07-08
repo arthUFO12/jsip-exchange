@@ -21,11 +21,17 @@ type t
 
 (** Create a dispatcher.
 
-    Events whose audience is a single participant (order-lifecycle responses
-    and [Fill] events) are currently handed to a stub [push_to_session] that
-    prints them on stdout, prefixed with the target participant. Wiring this
-    up to real [Session] outbound pipes is a week-2 exercise. *)
-val create : unit -> t
+    The three optional [max_*_pipe_length] arguments bound how many events
+    may buffer for a slow subscriber before the dispatcher starts dropping
+    (market data / audit) or evicting the session (per-session). Each
+    defaults to a shared built-in value; tune them independently to
+    reproduce slow-consumer backpressure. *)
+val create
+  :  ?max_market_data_pipe_length:int
+  -> ?max_audit_pipe_length:int
+  -> ?max_session_pipe_length:int
+  -> unit
+  -> t
 
 (** Subscribe to public market data for one or more [symbols]. The same pipe
     receives events for every requested symbol; the dispatcher avoids

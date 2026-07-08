@@ -2,6 +2,8 @@ open! Core
 open! Async
 open Jsip_types
 
+let default_max_pipe_length = 250
+
 module Session_data = struct
   type t =
     { session : Session.t
@@ -11,15 +13,33 @@ end
 
 type t =
   { market_data_subscribers_by_symbol :
-      Exchange_event.t Pipe.Writer.t Bag.t Symbol.Table.t
-  ; audit_subscribers : Exchange_event.t Pipe.Writer.t Bag.t
+      (Exchange_event.t Pipe.Reader.t * Exchange_event.t Pipe.Writer.t) Bag.t
+        Symbol.Table.t
+  ; audit_subscribers :
+      (Exchange_event.t Pipe.Reader.t * Exchange_event.t Pipe.Writer.t) Bag.t
   ; sessions_data : Session_data.t Participant.Table.t
+  ; max_market_data_pipe_length : int
+  ; max_audit_pipe_length : int
+  ; max_session_pipe_length : int
   }
 
-let create () =
+(* TODO(human): give [create] three optional args
+   (?max_market_data_pipe_length, ?max_audit_pipe_length,
+   ?max_session_pipe_length), each defaulting to [default_max_pipe_length],
+   and populate the matching record fields below. Keep the trailing [()] so
+   the optional args stay erasable. *)
+let create
+  ?(max_market_data_pipe_length = default_max_pipe_length)
+  ?(max_audit_pipe_length = default_max_pipe_length)
+  ?(max_session_pipe_length = default_max_pipe_length)
+  ()
+  =
   { market_data_subscribers_by_symbol = Symbol.Table.create ()
   ; audit_subscribers = Bag.create ()
   ; sessions_data = Participant.Table.create ()
+  ; max_market_data_pipe_length
+  ; max_audit_pipe_length
+  ; max_session_pipe_length
   }
 ;;
 
@@ -69,7 +89,7 @@ let subscribe_market_data t symbols =
           ~default:Bag.create
           symbol
       in
-      symbol, Bag.add subscribers writer)
+      symbol, Bag.add subscribers (reader, writer))
   in
   don't_wait_for
     (let%map () = Pipe.closed writer in
@@ -82,7 +102,7 @@ let subscribe_market_data t symbols =
 
 let subscribe_audit t =
   let reader, writer = Pipe.create () in
-  let elt = Bag.add t.audit_subscribers writer in
+  let elt = Bag.add t.audit_subscribers (reader, writer) in
   don't_wait_for
     (let%map () = Pipe.closed writer in
      Bag.remove t.audit_subscribers elt);
@@ -93,22 +113,27 @@ let push_market_data t event symbol =
   match Hashtbl.find t.market_data_subscribers_by_symbol symbol with
   | None -> ()
   | Some subscribers ->
-    Bag.iter subscribers ~f:(fun writer ->
+    Bag.iter subscribers ~f:(fun (reader, writer) ->
+      if Pipe.length reader >= t.max_market_data_pipe_length
+      then ignore (Pipe.read_now reader);
       Pipe.write_without_pushback_if_open writer event)
 ;;
 
 let push_audit t event =
-  Bag.iter t.audit_subscribers ~f:(fun writer ->
+  Bag.iter t.audit_subscribers ~f:(fun (reader, writer) ->
+    if Pipe.length reader >= t.max_audit_pipe_length
+    then ignore (Pipe.read_now reader);
     Pipe.write_without_pushback_if_open writer event)
 ;;
 
 let push_to_session t participant event =
-  (* TODO: Once sessions have been implemented this function should write the
-     event to the appropriate session's pipe. For now we have the server
-     binary print these events to stdout while tests can silence them. *)
   match Hashtbl.find t.sessions_data participant with
   | None -> ()
-  | Some session_data -> Session.push session_data.session event
+  | Some session_data ->
+    let reader = Session.reader session_data.session in
+    if Pipe.length reader >= t.max_session_pipe_length
+    then ignore (clean_up_session t session_data.session)
+    else Session.push session_data.session event
 ;;
 
 let dispatch_event t (event : Exchange_event.t) =
