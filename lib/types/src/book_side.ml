@@ -4,6 +4,7 @@ type t =
   { side : Side.t
   ; mutable price_levels : Order.t Queue.t Price.Map.t
   ; id_to_price : (Order_id.t, Price.t) Hashtbl_intf.Hashtbl.t
+  ; mutable best_price : Price.t option
   }
 [@@deriving sexp_of]
 
@@ -13,13 +14,16 @@ let add t order =
   let order_queue =
     match Map.find t.price_levels order_price with
     | None ->
+      let new_queue = Queue.create () in
       t.price_levels
-      <- (match
-            Map.add t.price_levels ~key:order_price ~data:(Queue.create ())
-          with
-          | `Duplicate -> t.price_levels
-          | `Ok map -> map);
-      Map.find_exn t.price_levels order_price
+      <- Map.set t.price_levels ~key:order_price ~data:new_queue;
+      (match t.best_price with
+       | Some bp
+         when Price.is_more_aggressive t.side ~price:order_price ~than:bp ->
+         t.best_price <- Some order_price
+       | Some _ -> ()
+       | None -> t.best_price <- Some order_price);
+      new_queue
     | Some queue -> queue
   in
   Hashtbl.add_exn t.id_to_price ~key:order_id ~data:order_price;
@@ -29,7 +33,16 @@ let add t order =
 let clean_up_price_level t (price : Price.t) =
   let price_queue = Map.find_exn t.price_levels price in
   if Queue.is_empty price_queue
-  then t.price_levels <- Map.remove t.price_levels price
+  then (
+    t.price_levels <- Map.remove t.price_levels price;
+    match t.best_price with
+    | Some bp when Price.( = ) price bp ->
+      t.best_price
+      <- (match (t.side : Side.t) with
+          | Buy -> Map.max_elt t.price_levels
+          | Sell -> Map.min_elt t.price_levels)
+         |> Option.map ~f:fst
+    | _ -> ())
 ;;
 
 let remove t order_id =
@@ -55,26 +68,18 @@ let remove t order_id =
 let create side =
   let map = Price.Map.empty in
   let id_to_price = Hashtbl.create ~growth_allowed:true (module Order_id) in
-  { side; price_levels = map; id_to_price }
+  { side; price_levels = map; id_to_price; best_price = None }
 ;;
 
-let best_price t =
-  let best_price =
-    match (t.side : Side.t) with
-    | Buy -> Map.max_elt t.price_levels
-    | Sell -> Map.min_elt t.price_levels
-  in
-  match best_price with None -> None | Some (price, _) -> Some price
-;;
+let best_price t = t.best_price
 
 let list_out t =
-  let list = ref [] in
+  let all_orders = Queue.create () in
   Map.iter t.price_levels ~f:(fun q ->
-    list
-    := match (t.side : Side.t) with
-       | Buy -> Queue.to_list q @ !list
-       | Sell -> !list @ Queue.to_list q);
-  !list
+    Queue.iter q ~f:(fun order -> Queue.enqueue all_orders order));
+  match (t.side : Side.t) with
+  | Buy -> Queue.to_list all_orders |> List.rev
+  | Sell -> Queue.to_list all_orders
 ;;
 
 let is_empty t = Map.is_empty t.price_levels

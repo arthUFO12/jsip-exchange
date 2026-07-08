@@ -48,25 +48,34 @@ let bob = Participant.of_string "Bob"
 (** Build a book with [n] resting sell orders at prices 1..n (in cents). This
     gives a realistic spread of prices for benchmarking find_match and
     best_price queries. *)
-let book_with_n_asks ?(min_price = 10_000) n =
+let book_with_n_asks ?(min_price = 10_000) ?(orders_per_level = 1) n =
   let book = Order_book.create aapl in
   let gen = Order_id.Generator.create () in
   for i = 1 to n do
-    let order =
-      Order.create
-        { symbol = aapl
-        ; side = Sell
-        ; price = Price.of_int_cents (min_price + i)
-        ; size = Size.of_int 100
-        ; time_in_force = Day
-        ; client_order_id = Client_order_id.create ()
-        }
-        ~order_id:(Order_id.Generator.next gen)
-        ~participant:bob
-    in
-    Order_book.add book order
+    for _ = 1 to orders_per_level do
+      let order =
+        Order.create
+          { symbol = aapl
+          ; side = Sell
+          ; price = Price.of_int_cents (min_price + i)
+          ; size = Size.of_int 100
+          ; time_in_force = Day
+          ; client_order_id = Client_order_id.create ()
+          }
+          ~order_id:(Order_id.Generator.next gen)
+          ~participant:bob
+      in
+      Order_book.add book order
+    done
   done;
   book, gen
+;;
+
+let engine_with_n_books ~n =
+  let symbols =
+    List.init n ~f:(fun sym -> sym |> Int.to_string |> Symbol.of_string)
+  in
+  Matching_engine.create symbols
 ;;
 
 (** Build a matching engine with [n] resting sells on AAPL. *)
@@ -137,6 +146,14 @@ let bench_best_bid_offer ~n =
   let book, _gen = book_with_n_asks n in
   Bench.Test.create ~name:[%string "best_bid_offer (n=%{n#Int})"] (fun () ->
     ignore (Order_book.best_bid_offer book : Bbo.t))
+;;
+
+let bench_snapshot ~n =
+  let min_price = 10_000 in
+  let orders_per_level = 50 in
+  let book, _gen = book_with_n_asks ~min_price ~orders_per_level n in
+  Bench.Test.create ~name:(sprintf "snapshot (n=%d)" n) (fun () ->
+    ignore (Order_book.snapshot book))
 ;;
 
 let bench_add_remove ~n =
@@ -222,6 +239,20 @@ let bench_submit_ioc_no_match ~n =
          }))
 ;;
 
+let bench_book_miss ~n =
+  let engine = engine_with_n_books ~n in
+  let not_in_engine = Symbol.of_string "000" in
+  Bench.Test.create ~name:(sprintf "find_book_miss (n=%d)" n) (fun () ->
+    ignore (Matching_engine.book engine not_in_engine))
+;;
+
+let bench_book_hit ~n =
+  let engine = engine_with_n_books ~n in
+  let in_engine = n / 2 |> Int.to_string |> Symbol.of_string in
+  Bench.Test.create ~name:(sprintf "find_book_hit (n=%d)" n) (fun () ->
+    ignore (Matching_engine.book engine in_engine))
+;;
+
 let bench_submit_sweep ~n =
   (* Measure an aggressive order that sweeps through the entire book.
      Re-seeds the book after each sweep. This is worst-case: every resting
@@ -303,5 +334,19 @@ let () =
         [ bench_find_match_alloc ~n:100 ]
       ]
   in
-  Command_unix.run (Bench.make_command tests)
+  let book_tests =
+    List.concat
+      [ List.map sizes ~f:(fun n -> bench_book_hit ~n)
+      ; List.map sizes ~f:(fun n -> bench_book_miss ~n)
+      ]
+  in
+  Command_unix.run
+    (Command.group
+       ~summary:"JSIP order-book benchmarks"
+       [ "existing", Bench.make_command tests
+       ; ( "snapshot"
+         , Bench.make_command
+             (List.map sizes ~f:(fun n -> bench_snapshot ~n)) )
+       ; "book", Bench.make_command book_tests
+       ])
 ;;

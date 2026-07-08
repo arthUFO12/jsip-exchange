@@ -11,7 +11,7 @@ module Silly_store = struct
   let get t key =
     let result = List.Assoc.find !t key ~equal:Int.equal in
     match result with
-    | None -> (* try again just to be sure *) List.Assoc.find !t key ~equal
+    | None -> (* try again just to be sure List.Assoc.find !t key ~equal *) None
     | result -> result
   ;;
 

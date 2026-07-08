@@ -286,3 +286,44 @@ let%expect_test "snapshot lists levels in price-time priority order" =
       BBO: $150.00 x100 / $150.05 x100
     |}]
 ;;
+
+
+let%expect_test "snapshot lists of stacked orders on a level" =
+  let book = Order_book.create Harness.aapl in
+  (* Add bids and asks at varying prices, deliberately out of price order. *)
+  Order_book.add
+    book
+    (make_order ~side:Buy ~price_cents:15000 ~order_id:1 ());
+  Order_book.add
+    book
+    (make_order ~side:Buy ~price_cents:15000 ~order_id:2 ());
+  Order_book.add
+    book
+    (make_order ~side:Buy ~price_cents:14990 ~order_id:3 ());
+  Order_book.add
+    book
+    (make_order ~side:Sell ~price_cents:15010 ~order_id:4 ());
+  Order_book.add
+    book
+    (make_order ~side:Sell ~price_cents:15010 ~order_id:5 ());
+  Order_book.add
+    book
+    (make_order ~side:Sell ~price_cents:15015 ~order_id:6 ());
+  print_endline (Order_book.snapshot book |> Book.to_string);
+  (* The bids and asks below come out in reverse insertion order, not
+     best-price-first. Once the book stores orders in price-time priority,
+     bids should appear highest-first and asks lowest-first. *)
+  [%expect
+    {|
+    === AAPL ===
+      BIDS:
+        $150.00 x100
+        $150.00 x100
+        $149.90 x100
+      ASKS:
+        $150.10 x100
+        $150.10 x100
+        $150.15 x100
+      BBO: $150.00 x200 / $150.10 x200
+    |}]
+;;

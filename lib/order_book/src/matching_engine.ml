@@ -2,7 +2,7 @@ open! Core
 open Jsip_types
 
 type t =
-  { books : Order_book.t Symbol.Map.t
+  { books : Order_book.t Symbol.Table.t
   ; order_id_gen : Order_id.Generator.t
   ; mutable next_fill_id : int
   }
@@ -11,12 +11,12 @@ type t =
 let create symbols =
   let books =
     List.map symbols ~f:(fun sym -> sym, Order_book.create sym)
-    |> Symbol.Map.of_alist_exn
+    |> Symbol.Table.of_alist_exn
   in
   { books; order_id_gen = Order_id.Generator.create (); next_fill_id = 1 }
 ;;
 
-let book t symbol = Map.find t.books symbol
+let book t symbol = Hashtbl.find t.books symbol
 
 (** Run the matching loop: repeatedly find a compatible resting order and
     fill against it. Returns the list of Fill and Trade_report events
@@ -64,7 +64,7 @@ let rec match_loop ~book ~order ~fill_id =
 ;;
 
 let cancel t (order : Order.t) =
-  let book = Map.find t.books (Order.symbol order) in
+  let book = Hashtbl.find t.books (Order.symbol order) in
   match book with
   | None -> Or_error.error_string "symbol not listed"
   | Some book ->
@@ -82,7 +82,7 @@ let cancel t (order : Order.t) =
 ;;
 
 let submit t ~participant (request : Order.Request.t) =
-  match Map.find t.books request.symbol with
+  match Hashtbl.find t.books request.symbol with
   | None ->
     ( None
     , [ Exchange_event.Order_reject
