@@ -287,7 +287,6 @@ let%expect_test "snapshot lists levels in price-time priority order" =
     |}]
 ;;
 
-
 let%expect_test "snapshot lists of stacked orders on a level" =
   let book = Order_book.create Harness.aapl in
   (* Add bids and asks at varying prices, deliberately out of price order. *)

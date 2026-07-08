@@ -88,13 +88,10 @@ let assoc_tests ~name ~create ~set ~get ~key_of_index =
   in
   List.concat_map sizes ~f:(fun n ->
     let prebuilt = build n in
-    [ Bench.Test.create
-        ~name:(sprintf "%s build (n=%d)" name n)
-        (fun () -> ignore (build n : _))
-    ; Bench.Test.create
-        ~name:(sprintf "%s get_hit (n=%d)" name n)
-        (fun () ->
-           ignore (get prebuilt (key_of_index (present_key n)) : int option))
+    [ Bench.Test.create ~name:(sprintf "%s build (n=%d)" name n) (fun () ->
+        ignore (build n : _))
+    ; Bench.Test.create ~name:(sprintf "%s get_hit (n=%d)" name n) (fun () ->
+        ignore (get prebuilt (key_of_index (present_key n)) : int option))
     ; Bench.Test.create
         ~name:(sprintf "%s get_miss (n=%d)" name n)
         (fun () ->
@@ -155,16 +152,19 @@ let bench_allocation =
         (fun () -> ignore (Allocations.Build_list.silly input : int list))
     ; Bench.Test.create
         ~name:(sprintf "Build_list non_silly (n=%d)" n)
-        (fun () -> ignore (Allocations.Build_list.non_silly input : int list))
+        (fun () ->
+           ignore (Allocations.Build_list.non_silly input : int list))
     ; Bench.Test.create
         ~name:(sprintf "First_match silly (n=%d)" n)
         (fun () ->
-           ignore (Allocations.First_match.silly input ~f:is_even : int option))
+           ignore
+             (Allocations.First_match.silly input ~f:is_even : int option))
     ; Bench.Test.create
         ~name:(sprintf "First_match non_silly (n=%d)" n)
         (fun () ->
            ignore
-             (Allocations.First_match.non_silly input ~f:is_even : int option))
+             (Allocations.First_match.non_silly input ~f:is_even
+              : int option))
     ])
 ;;
 
