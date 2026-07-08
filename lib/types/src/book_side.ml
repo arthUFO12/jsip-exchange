@@ -37,11 +37,13 @@ let clean_up_price_level t (price : Price.t) =
     t.price_levels <- Map.remove t.price_levels price;
     match t.best_price with
     | Some bp when Price.( = ) price bp ->
-      t.best_price
-      <- (match (t.side : Side.t) with
-          | Buy -> Map.max_elt t.price_levels
-          | Sell -> Map.min_elt t.price_levels)
-         |> Option.map ~f:fst
+      let best_price_tuple =
+        match (t.side : Side.t) with
+        | Buy -> Map.max_elt t.price_levels
+        | Sell -> Map.min_elt t.price_levels
+      in
+      let new_best_price = Option.map best_price_tuple ~f:fst in
+      t.best_price <- new_best_price
     | _ -> ())
 ;;
 
