@@ -2,7 +2,7 @@ open! Core
 
 type t =
   { side : Side.t
-  ; mutable price_levels : Order.t Queue.t Price.Map.t
+  ; mutable price_levels : (Order_id.t, Order.t) My_hash_queue.t Price.Map.t
   ; id_to_price : (Order_id.t, Price.t) Hashtbl_intf.Hashtbl.t
   ; mutable best_price : Price.t option
   }
@@ -14,7 +14,7 @@ let add t order =
   let order_queue =
     match Map.find t.price_levels order_price with
     | None ->
-      let new_queue = Queue.create () in
+      let new_queue = My_hash_queue.create (module Order_id) in
       t.price_levels
       <- Map.set t.price_levels ~key:order_price ~data:new_queue;
       (match t.best_price with
@@ -27,12 +27,12 @@ let add t order =
     | Some queue -> queue
   in
   Hashtbl.add_exn t.id_to_price ~key:order_id ~data:order_price;
-  Queue.enqueue order_queue order
+  ignore (My_hash_queue.enqueue order_queue order_id order)
 ;;
 
 let clean_up_price_level t (price : Price.t) =
   let price_queue = Map.find_exn t.price_levels price in
-  if Queue.is_empty price_queue
+  if My_hash_queue.is_empty price_queue
   then (
     t.price_levels <- Map.remove t.price_levels price;
     match t.best_price with
@@ -52,16 +52,7 @@ let remove t order_id =
   | None -> None
   | Some order_price ->
     let price_queue = Map.find_exn t.price_levels order_price in
-    let front_id = Queue.peek_exn price_queue |> Order.order_id in
-    let order =
-      if Order_id.equal order_id front_id
-      then Queue.dequeue price_queue
-      else (
-        let equal_func x = Order_id.equal (Order.order_id x) order_id in
-        let found_order = Queue.find price_queue ~f:equal_func in
-        Queue.filter_inplace price_queue ~f:(fun ele -> not (equal_func ele));
-        found_order)
-    in
+    let order = My_hash_queue.remove price_queue order_id in
     Hashtbl.remove t.id_to_price order_id;
     clean_up_price_level t order_price;
     order
@@ -78,7 +69,7 @@ let best_price t = t.best_price
 let list_out t =
   let all_orders = Queue.create () in
   Map.iter t.price_levels ~f:(fun q ->
-    Queue.iter q ~f:(fun order -> Queue.enqueue all_orders order));
+    My_hash_queue.iter q ~f:(fun order -> Queue.enqueue all_orders order));
   match (t.side : Side.t) with
   | Buy -> Queue.to_list all_orders |> List.rev
   | Sell -> Queue.to_list all_orders
@@ -88,7 +79,7 @@ let is_empty t = Map.is_empty t.price_levels
 
 let size t =
   Map.fold t.price_levels ~init:0 ~f:(fun ~key:_ ~data sum ->
-    sum + Queue.length data)
+    sum + My_hash_queue.length data)
 ;;
 
 let find t order_id =
@@ -96,8 +87,7 @@ let find t order_id =
   | None -> None
   | Some order_price ->
     let price_queue = Map.find_exn t.price_levels order_price in
-    Queue.find price_queue ~f:(fun x ->
-      Order_id.equal (Order.order_id x) order_id)
+    My_hash_queue.find price_queue order_id
 ;;
 
 let find_best_price_time_match t price buy_or_sell =
@@ -105,11 +95,11 @@ let find_best_price_time_match t price buy_or_sell =
   | Buy ->
     (match Map.min_elt t.price_levels with
      | None -> None
-     | Some (key, queue) when Price.( <= ) key price -> Queue.peek queue
+     | Some (key, queue) when Price.( <= ) key price -> My_hash_queue.peek queue
      | Some _ -> None)
   | Sell ->
     (match Map.max_elt t.price_levels with
      | None -> None
-     | Some (key, queue) when Price.( >= ) key price -> Queue.peek queue
+     | Some (key, queue) when Price.( >= ) key price -> My_hash_queue.peek queue
      | Some _ -> None)
 ;;
