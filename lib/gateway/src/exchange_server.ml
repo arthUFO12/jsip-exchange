@@ -165,36 +165,83 @@ let cancel_events ~engine ~dispatcher ~participant ~client_order_id =
    [submitted_at] to now, the moment the matching engine has finished. *)
 let latency_since submitted_at = Time_ns.diff (Time_ns.now ()) submitted_at
 
-let start_matching_loop ~engine ~dispatcher ~monitor request_reader =
+(* Every traded symbol paired with its book. Both the rate limiter (resting
+   counts) and the dashboard snapshot need this same view of the books. *)
+let books_of_engine ~engine ~symbols =
+  List.filter_map symbols ~f:(fun symbol ->
+    Matching_engine.book engine symbol
+    |> Option.map ~f:(fun book -> symbol, book))
+;;
+
+let start_matching_loop
+  ~engine
+  ~dispatcher
+  ~monitor
+  ~limits
+  ~symbols
+  request_reader
+  =
   don't_wait_for
     (Pipe.iter_without_pushback request_reader ~f:(fun action ->
        match (action : Matching_engine_action.t) with
        | New_order { participant; request; submitted_at } ->
-         let order, events =
-           Matching_engine.submit engine ~participant request
-         in
-         (match order with
-          | None -> ()
-          | Some order ->
-            Dispatcher.register_order_to_coid_participant_pair
-              dispatcher
+         let now = Time_ns.now () in
+         (* Sticky: count the attempt before the block decision, so a
+            participant who keeps flooding stays blocked rather than
+            oscillating as their window drains. *)
+         Metrics.note_submit monitor ~now ~participant;
+         (match
+            Metrics.submit_blocked
+              monitor
+              ~now
               ~participant
-              ~client_order_id:request.client_order_id
-              ~order;
-            Dispatcher.dispatch dispatcher events);
-         Metrics.record_submit
-           monitor
-           ~now:(Time_ns.now ())
-           ~latency:(latency_since submitted_at)
-           ~participant
+              ~books:(books_of_engine ~engine ~symbols)
+              ~limits
+          with
+          | Some reason ->
+            Dispatcher.dispatch
+              dispatcher
+              [ Exchange_event.Order_reject { participant; request; reason }
+              ]
+          | None ->
+            let order, events =
+              Matching_engine.submit engine ~participant request
+            in
+            (match order with
+             | None -> ()
+             | Some order ->
+               Dispatcher.register_order_to_coid_participant_pair
+                 dispatcher
+                 ~participant
+                 ~client_order_id:request.client_order_id
+                 ~order;
+               Dispatcher.dispatch dispatcher events);
+            Metrics.record_submit_latency
+              monitor
+              ~now:(Time_ns.now ())
+              ~latency:(latency_since submitted_at))
        | Cancel_order { participant; client_order_id; submitted_at } ->
-         Dispatcher.dispatch
-           dispatcher
-           (cancel_events ~engine ~dispatcher ~participant ~client_order_id);
-         Metrics.record_cancel
-           monitor
-           ~now:(Time_ns.now ())
-           ~latency:(latency_since submitted_at)))
+         let now = Time_ns.now () in
+         Metrics.note_cancel monitor ~now ~participant;
+         (match Metrics.cancel_blocked monitor ~now ~participant ~limits with
+          | Some reason ->
+            Dispatcher.dispatch
+              dispatcher
+              [ Exchange_event.Cancel_reject
+                  { participant; client_order_id; reason }
+              ]
+          | None ->
+            Dispatcher.dispatch
+              dispatcher
+              (cancel_events
+                 ~engine
+                 ~dispatcher
+                 ~participant
+                 ~client_order_id);
+            Metrics.record_cancel_latency
+              monitor
+              ~now:(Time_ns.now ())
+              ~latency:(latency_since submitted_at))))
 ;;
 
 let on_close_hook conn dispatcher session =
@@ -224,11 +271,7 @@ let handle_session_feed (state : Connection_state.t) =
 let dashboard_snapshot ~engine ~symbols ~monitor ~focus_symbol =
   let now = Time_ns.now () in
   let memory = Dashboard_snapshot.memory_stats_of_gc (Gc.stat ()) in
-  let books =
-    List.filter_map symbols ~f:(fun symbol ->
-      Matching_engine.book engine symbol
-      |> Option.map ~f:(fun book -> symbol, book))
-  in
+  let books = books_of_engine ~engine ~symbols in
   Metrics.build_snapshot monitor ~now ~memory ~books ~focus_symbol
 ;;
 
@@ -310,13 +353,19 @@ let build_implementations
     ~on_exception:Log_on_background_exn
 ;;
 
-let start ~symbols ~port () =
+let start ?(rate_limits = Rate_limits.default) ~symbols ~port () =
   let engine = Matching_engine.create symbols in
   let dispatcher = Dispatcher.create () in
   let monitor = Metrics.create () in
   let request_reader, request_writer = Pipe.create () in
   Pipe.set_size_budget request_writer request_queue_size_budget;
-  start_matching_loop ~engine ~dispatcher ~monitor request_reader;
+  start_matching_loop
+    ~engine
+    ~dispatcher
+    ~monitor
+    ~limits:rate_limits
+    ~symbols
+    request_reader;
   let implementations =
     build_implementations
       ~engine

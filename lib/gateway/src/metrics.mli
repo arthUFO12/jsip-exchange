@@ -5,16 +5,17 @@
     {!Async.Monitor}, which every [open! Async] brings into scope.)
 
     Like {!Latency_tracker}, this is a pure state machine: the async server
-    layer feeds it observations ([record_submit]/[record_cancel], called from
-    the matching loop) and, once per second, asks it to [build_snapshot] from
-    inputs it supplies — the current time, the process memory reading, and
-    the order books. Nothing here reads the wall clock, samples the GC, or
-    touches Async, so it is unit testable in isolation.
+    layer feeds it observations (the [note_*]/[record_*_latency] functions,
+    called from the matching loop) and, once per second, asks it to
+    [build_snapshot] from inputs it supplies — the current time, the process
+    memory reading, and the order books. Nothing here reads the wall clock,
+    samples the GC, or touches Async, so it is unit testable in isolation.
 
     It owns two kinds of state:
     - a {!Latency_tracker} for submit/cancel latency, and
-    - a trailing one-second window of submission timestamps per participant,
-      from which order rate is derived.
+    - trailing one-second windows of submit and cancel timestamps per
+      participant, from which order/cancel rate — and the rate-limit
+      decisions in {!submit_blocked}/{!cancel_blocked} — are derived.
 
     Resting-order counts and book depth are {e not} tracked here — they are
     read straight from the books at snapshot time, since the books already
@@ -29,19 +30,58 @@ type t
 
 val create : unit -> t
 
-(** Record a completed submit-order request for [participant], measured at
-    [~now] with the given [~latency]. Feeds both the latency tracker and the
-    participant's order-rate window. *)
-val record_submit
+(** Note that [participant] attempted a submit at [~now], adding it to their
+    trailing order-rate window. Called before the block decision so that even
+    a rejected submit counts toward the rate. *)
+val note_submit : t -> now:Time_ns.t -> participant:Participant.t -> unit
+
+(** As {!note_submit}, for cancels. *)
+val note_cancel : t -> now:Time_ns.t -> participant:Participant.t -> unit
+
+(** Record the measured [~latency] of an accepted submit, observed at [~now].
+    Feeds only the latency tracker; rate is handled by {!note_submit}. *)
+val record_submit_latency
   :  t
   -> now:Time_ns.t
   -> latency:Time_ns.Span.t
-  -> participant:Participant.t
   -> unit
 
-(** Record a completed cancel-order request. Cancels are not attributed to a
-    participant in the rate metric, so no participant is required. *)
-val record_cancel : t -> now:Time_ns.t -> latency:Time_ns.Span.t -> unit
+(** As {!record_submit_latency}, for cancels. *)
+val record_cancel_latency
+  :  t
+  -> now:Time_ns.t
+  -> latency:Time_ns.Span.t
+  -> unit
+
+(** [participant]'s live resting-order count across every book in [books],
+    both sides. Read straight from the books, so it reflects the current book
+    state rather than any window. *)
+val resting_order_count
+  :  (Symbol.t * Order_book.t) list
+  -> participant:Participant.t
+  -> int
+
+(** Whether [participant]'s next submit should be rejected under [~limits],
+    given their trailing submit rate and their resting-order count across
+    [~books]. [Some reason] blocks (the reason feeds the [Order_reject]
+    event); [None] allows. *)
+val submit_blocked
+  :  t
+  -> now:Time_ns.t
+  -> participant:Participant.t
+  -> books:(Symbol.t * Order_book.t) list
+  -> limits:Rate_limits.t
+  -> string option
+
+(** Whether [participant]'s next cancel should be rejected under [~limits],
+    given their trailing cancel rate. [Some reason] blocks (feeding the
+    [Cancel_reject] event); [None] allows. *)
+val cancel_blocked
+  :  t
+  -> now:Time_ns.t
+  -> participant:Participant.t
+  -> limits:Rate_limits.t
+  -> string option
 
 (** Assemble a snapshot as of [~now].
 
@@ -57,3 +97,13 @@ val build_snapshot
   -> books:(Symbol.t * Order_book.t) list
   -> focus_symbol:Symbol.t
   -> Dashboard_snapshot.t
+
+(** Per-participant rate and resting-order stats as of [~now], one entry per
+    participant who is either currently submitting or has resting interest in
+    [~books]. This is the [participants] section of {!build_snapshot},
+    exposed on its own so it can be built and tested without a full snapshot. *)
+val participant_stats
+  :  t
+  -> now:Time_ns.t
+  -> books:(Symbol.t * Order_book.t) list
+  -> Dashboard_snapshot.Participant_stats.t list

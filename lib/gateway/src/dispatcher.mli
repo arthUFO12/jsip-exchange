@@ -24,8 +24,8 @@ type t
     The three optional [max_*_pipe_length] arguments bound how many events
     may buffer for a slow subscriber before the dispatcher starts dropping
     (market data / audit) or evicting the session (per-session). Each
-    defaults to a shared built-in value; tune them independently to
-    reproduce slow-consumer backpressure. *)
+    defaults to a shared built-in value; tune them independently to reproduce
+    slow-consumer backpressure. *)
 val create
   :  ?max_market_data_pipe_length:int
   -> ?max_audit_pipe_length:int

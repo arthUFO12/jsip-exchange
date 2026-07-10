@@ -9,11 +9,16 @@ type t =
        oldest-first. Pruned to [Latency_tracker.window] so its length is the
        submission count in the trailing window. *)
     order_events : Time_ns.t Queue.t Participant.Table.t
+  ; (* The same, for cancels — added so cancels/sec can be rate-limited per
+       participant. The dashboard's latency view aggregates cancels across
+       everyone, but the limiter needs per-participant attribution. *)
+    cancel_events : Time_ns.t Queue.t Participant.Table.t
   }
 
 let create () =
   { latency = Latency_tracker.create ()
   ; order_events = Participant.Table.create ()
+  ; cancel_events = Participant.Table.create ()
   }
 ;;
 
@@ -30,25 +35,47 @@ let prune_events queue ~now =
   done
 ;;
 
-let record_submit t ~now ~latency ~participant =
-  Latency_tracker.record_submit t.latency ~now ~latency;
-  let queue =
-    Hashtbl.find_or_add t.order_events participant ~default:Queue.create
-  in
+(* Rate accounting and latency accounting are recorded separately because the
+   matching loop needs them at different moments: it notes the attempt up
+   front (so a rejected request still counts toward the rate), but only
+   measures latency once an accepted request has finished. *)
+
+let note_event table ~now ~participant =
+  let queue = Hashtbl.find_or_add table participant ~default:Queue.create in
   Queue.enqueue queue now;
   prune_events queue ~now
 ;;
 
-let record_cancel t ~now ~latency =
+let note_submit t ~now ~participant =
+  note_event t.order_events ~now ~participant
+;;
+
+let note_cancel t ~now ~participant =
+  note_event t.cancel_events ~now ~participant
+;;
+
+let record_submit_latency t ~now ~latency =
+  Latency_tracker.record_submit t.latency ~now ~latency
+;;
+
+let record_cancel_latency t ~now ~latency =
   Latency_tracker.record_cancel t.latency ~now ~latency
 ;;
 
-let order_rate t ~now ~participant =
-  match Hashtbl.find t.order_events participant with
+let rate_in_window table ~now ~participant =
+  match Hashtbl.find table participant with
   | None -> 0.
   | Some queue ->
     prune_events queue ~now;
     Float.of_int (Queue.length queue) /. Time_ns.Span.to_sec window
+;;
+
+let submit_rate t ~now ~participant =
+  rate_in_window t.order_events ~now ~participant
+;;
+
+let cancel_rate t ~now ~participant =
+  rate_in_window t.cancel_events ~now ~participant
 ;;
 
 (* Count resting orders per participant across every book, both sides. *)
@@ -59,6 +86,58 @@ let resting_counts_by_participant books =
       List.iter (Order_book.orders_on_side book side) ~f:(fun order ->
         Hashtbl.incr counts (Order.participant order))));
   counts
+;;
+
+(* One participant's live resting-order count across every book. *)
+let resting_order_count books ~participant =
+  Hashtbl.find (resting_counts_by_participant books) participant
+  |> Option.value ~default:0
+;;
+
+(* [submit_blocked]/[cancel_blocked] answer "should the matching loop reject
+   this request?" as [Some reason] (block, [reason] feeds the reject event)
+   or [None] (allow). They are pure over the metric windows plus [~books], so
+   they unit-test without Async — see [test_metrics.ml]. *)
+
+(* TODO(human): implement the submit-side policy.
+
+   Return [Some reason] to reject [participant]'s next submit, or [None] to
+   allow it. Block when EITHER limit is exceeded:
+   - resting orders: [resting_order_count books ~participant] against
+     [limits.max_resting_orders]; and
+   - submit rate: [order_rate t ~now ~participant] (submissions per second in
+     the trailing window) against [limits.max_submits_per_sec]. Decide the
+     boundary (is exactly-at-the-limit allowed or blocked?) and craft a
+     human-readable [reason] for whichever limit tripped. [cancel_blocked]
+     below is the worked pattern for the rate half. *)
+let submit_blocked t ~now ~participant ~books ~(limits : Rate_limits.t) =
+  let rate = submit_rate t ~now ~participant in
+  let resting_orders = resting_order_count books ~participant in
+  let over_resting = resting_orders > limits.max_resting_orders in
+  let over_rate = Float.O.(rate > Float.of_int limits.max_submits_per_sec) in
+  match over_resting, over_rate with
+  | true, _ ->
+    Some
+      [%string
+        "resting order limit exceeded: %{resting_orders#Int} > \
+         %{limits.max_resting_orders#Int}"]
+  | _, true ->
+    Some
+      [%string
+        "order rate limit exceeded: %{rate#Float}/s > \
+         %{limits.max_submits_per_sec#Int}/s"]
+  | false, false -> None
+;;
+
+let cancel_blocked t ~now ~participant ~(limits : Rate_limits.t) =
+  let rate = cancel_rate t ~now ~participant in
+  match Float.( > ) rate (Float.of_int limits.max_cancels_per_sec) with
+  | false -> None
+  | true ->
+    Some
+      [%string
+        "cancel rate limit exceeded: %{rate#Float}/s > \
+         %{limits.max_cancels_per_sec#Int}/s"]
 ;;
 
 let participant_stats t ~now ~books =
@@ -74,7 +153,7 @@ let participant_stats t ~now ~books =
   in
   Set.to_list participants
   |> List.filter_map ~f:(fun participant ->
-    let orders_per_sec = order_rate t ~now ~participant in
+    let orders_per_sec = submit_rate t ~now ~participant in
     let resting_order_count =
       Hashtbl.find resting participant |> Option.value ~default:0
     in

@@ -5,5 +5,6 @@ module Dispatcher = Dispatcher
 module Exchange_server = Exchange_server
 module Exchange_command = Exchange_command
 module Metrics = Metrics
+module Rate_limits = Rate_limits
 module Dashboard_snapshot = Jsip_protocol.Dashboard_snapshot
 module Latency_tracker = Latency_tracker

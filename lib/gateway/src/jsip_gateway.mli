@@ -19,3 +19,4 @@ module Exchange_command = Exchange_command
 module Dashboard_snapshot = Jsip_protocol.Dashboard_snapshot
 module Latency_tracker = Latency_tracker
 module Metrics = Metrics
+module Rate_limits = Rate_limits

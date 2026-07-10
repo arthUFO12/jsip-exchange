@@ -71,7 +71,6 @@ module Internal_queue = struct
     in
     iter_helper t.head
   ;;
-
 end
 
 type ('k, 'v) t =

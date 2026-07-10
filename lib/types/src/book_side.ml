@@ -95,11 +95,13 @@ let find_best_price_time_match t price buy_or_sell =
   | Buy ->
     (match Map.min_elt t.price_levels with
      | None -> None
-     | Some (key, queue) when Price.( <= ) key price -> My_hash_queue.peek queue
+     | Some (key, queue) when Price.( <= ) key price ->
+       My_hash_queue.peek queue
      | Some _ -> None)
   | Sell ->
     (match Map.max_elt t.price_levels with
      | None -> None
-     | Some (key, queue) when Price.( >= ) key price -> My_hash_queue.peek queue
+     | Some (key, queue) when Price.( >= ) key price ->
+       My_hash_queue.peek queue
      | Some _ -> None)
 ;;

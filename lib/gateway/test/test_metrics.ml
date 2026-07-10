@@ -91,16 +91,129 @@ let%expect_test "resting counts (all symbols) and focus-symbol depth" =
     |}]
 ;;
 
+let make_limits
+  ?(max_resting_orders = 1000)
+  ?(max_submits_per_sec = 100)
+  ?(max_cancels_per_sec = 100)
+  ()
+  : Rate_limits.t
+  =
+  { max_resting_orders; max_submits_per_sec; max_cancels_per_sec }
+;;
+
+(* Print only the block/allow decision, not the reason text, so these tests
+   stay agnostic to how the reason strings are worded. *)
+let show_decision label decision =
+  match (decision : string option) with
+  | None -> printf "%s: allowed\n" label
+  | Some (_reason : string) -> printf "%s: blocked\n" label
+;;
+
+(* When it matters that the {e right} limit is reported (a block can trip on
+   either the resting or the rate limit), print the reason too. *)
+let show_reason label decision =
+  match (decision : string option) with
+  | None -> printf "%s: allowed\n" label
+  | Some reason -> printf "%s: blocked (%s)\n" label reason
+;;
+
+let%expect_test "submit_blocked: submit rate over the limit is rejected" =
+  let h = Harness.create ~symbols:[ Harness.aapl ] () in
+  let m = Metrics.create () in
+  let limits = make_limits ~max_submits_per_sec:3 () in
+  let books = books_of h [ Harness.aapl ] in
+  (* Charlie fires five submits inside the window: over the 3/s limit. *)
+  List.iter [ 0.; 10.; 20.; 30.; 40. ] ~f:(fun offset ->
+    Metrics.note_submit m ~now:(at offset) ~participant:Harness.charlie);
+  show_decision
+    "charlie (5 submits, limit 3)"
+    (Metrics.submit_blocked
+       m
+       ~now:(at 40.)
+       ~participant:Harness.charlie
+       ~books
+       ~limits);
+  (* Alice has neither submitted nor rested: comfortably under both limits. *)
+  show_decision
+    "alice (0 submits)"
+    (Metrics.submit_blocked
+       m
+       ~now:(at 40.)
+       ~participant:Harness.alice
+       ~books
+       ~limits);
+  [%expect
+    {|
+    charlie (5 submits, limit 3): blocked
+    alice (0 submits): allowed
+    |}]
+;;
+
+let%expect_test "submit_blocked: too many resting orders is rejected" =
+  let h = Harness.create ~symbols:[ Harness.aapl ] () in
+  let m = Metrics.create () in
+  let limits = make_limits ~max_resting_orders:2 () in
+  (* Four non-crossing buys all rest, putting Alice over the limit of 2. *)
+  List.iter [ 10000; 9900; 9800; 9700 ] ~f:(fun price_cents ->
+    Harness.submit_quiet_
+      h
+      ~participant:Harness.alice
+      (Harness.buy ~price_cents ~size:10 ()));
+  (* Bob rests a single order: under the limit. *)
+  Harness.submit_quiet_
+    h
+    ~participant:Harness.bob
+    (Harness.buy ~price_cents:9500 ~size:10 ());
+  let books = books_of h [ Harness.aapl ] in
+  (* Alice's calm submit rate means a block here must cite the resting limit,
+     not the rate limit. *)
+  show_reason
+    "alice (4 resting, limit 2)"
+    (Metrics.submit_blocked m ~now ~participant:Harness.alice ~books ~limits);
+  show_reason
+    "bob (1 resting, limit 2)"
+    (Metrics.submit_blocked m ~now ~participant:Harness.bob ~books ~limits);
+  [%expect
+    {|
+    alice (4 resting, limit 2): blocked (resting order limit exceeded: 4 > 2)
+    bob (1 resting, limit 2): allowed
+    |}]
+;;
+
+let%expect_test "cancel_blocked: cancel rate over the limit is rejected" =
+  let m = Metrics.create () in
+  let limits = make_limits ~max_cancels_per_sec:3 () in
+  (* Charlie fires five cancels inside the window: over the 3/s limit. *)
+  List.iter [ 0.; 10.; 20.; 30.; 40. ] ~f:(fun offset ->
+    Metrics.note_cancel m ~now:(at offset) ~participant:Harness.charlie);
+  show_decision
+    "charlie (5 cancels, limit 3)"
+    (Metrics.cancel_blocked
+       m
+       ~now:(at 40.)
+       ~participant:Harness.charlie
+       ~limits);
+  (* Alice hasn't cancelled at all. *)
+  show_decision
+    "alice (0 cancels)"
+    (Metrics.cancel_blocked
+       m
+       ~now:(at 40.)
+       ~participant:Harness.alice
+       ~limits);
+  [%expect
+    {|
+    charlie (5 cancels, limit 3): blocked
+    alice (0 cancels): allowed
+    |}]
+;;
+
 let%expect_test "order rate reflects submissions in the trailing window" =
   let h = Harness.create ~symbols:[ Harness.aapl ] () in
   let m = Metrics.create () in
   (* A spammer fires three orders within the last second but rests nothing. *)
   List.iter [ 0.; 100.; 200. ] ~f:(fun offset ->
-    Metrics.record_submit
-      m
-      ~now:(at offset)
-      ~latency:(Time_ns.Span.of_ms 1.)
-      ~participant:Harness.charlie);
+    Metrics.note_submit m ~now:(at offset) ~participant:Harness.charlie);
   let snap =
     Metrics.build_snapshot
       m

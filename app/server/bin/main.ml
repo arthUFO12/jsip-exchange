@@ -130,9 +130,10 @@ let trade_back_and_forth ~where_to_connect =
   Clock_ns.every cycle_period (fun () -> don't_wait_for (cycle ()))
 ;;
 
-let start ~port ~market_maker_behavior ~http_port ~dashboard_dir =
+let start ~port ~market_maker_behavior ~http_port ~dashboard_dir ~rate_limits
+  =
   let%bind server =
-    Exchange_server.start ~symbols:default_symbols ~port ()
+    Exchange_server.start ~rate_limits ~symbols:default_symbols ~port ()
   in
   let where_to_connect =
     Tcp.Where_to_connect.of_host_and_port { host = "localhost"; port }
@@ -213,7 +214,31 @@ let () =
                 traffic for the monitor (mutually exclusive with \
                 -seed-market-maker)"
          ]
+     and max_resting_orders =
+       flag
+         "-max-resting-orders"
+         (optional_with_default Rate_limits.default.max_resting_orders int)
+         ~doc:"N reject a participant's submits past N resting orders"
+     and max_submits_per_sec =
+       flag
+         "-max-submits-per-sec"
+         (optional_with_default Rate_limits.default.max_submits_per_sec int)
+         ~doc:"N reject a participant's submits past N per second"
+     and max_cancels_per_sec =
+       flag
+         "-max-cancels-per-sec"
+         (optional_with_default Rate_limits.default.max_cancels_per_sec int)
+         ~doc:"N reject a participant's cancels past N per second"
      in
-     fun () -> start ~port ~market_maker_behavior ~http_port ~dashboard_dir)
+     let rate_limits : Rate_limits.t =
+       { max_resting_orders; max_submits_per_sec; max_cancels_per_sec }
+     in
+     fun () ->
+       start
+         ~port
+         ~market_maker_behavior
+         ~http_port
+         ~dashboard_dir
+         ~rate_limits)
   |> Command_unix.run
 ;;

@@ -133,20 +133,6 @@ type t =
 let create () = { history = []; focus = All }
 let window = Time_ns.Span.of_min 1.
 
-(* Drop snapshots that fall outside the trailing [window] ending at [newest]
-   (the [sampled_at] of the snapshot just appended). The list is oldest-first
-   and time-ordered, so the expired snapshots are exactly a prefix.
-
-   TODO(human) Return the sublist of [history] still inside the window: keep
-   every snapshot whose age relative to [newest] is at most [window], drop
-   the rest. Because [history] is oldest-first and ordered by [sampled_at],
-   the too-old snapshots form a prefix, so [List.drop_while] fits well.
-
-   The age of a snapshot [s] is [Time_ns.diff newest s.sampled_at]; it is
-   expired when that span is strictly greater than [window] (a snapshot
-   exactly [window] old is kept — the same [>]-boundary rule as
-   [Latency_tracker.prune] in the backend). Handy pieces:
-   [List.drop_while ~f], [Time_ns.diff], [Time_ns.Span.( > )]. *)
 let prune (history : Dashboard_snapshot.t list) ~(newest : Time_ns.t) =
   let should_prune (snapshot : Dashboard_snapshot.t) =
     Time_ns.( < ) snapshot.sampled_at (Time_ns.sub newest window)
